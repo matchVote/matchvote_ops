@@ -8,6 +8,12 @@ Parameters:
   IpRangeAllowedForSSH:
     Description: The IP to allow for connecting by SSH
     Type: String
+  DBMasterUsername:
+    Description: Username for master user in database
+    Type: String
+  DBMasterUserPassword:
+    Description: Password for master user in database
+    Type: String
 
 Resources:
   # Set up VPC
@@ -23,18 +29,52 @@ Resources:
     Properties:
       VpcId: !Ref VPC
       InternetGatewayId: !Ref InternetGateway
-  PublicSubnet:
+  WebServerSubnet:
     Type: AWS::EC2::Subnet
     Properties:
       CidrBlock: 10.0.1.0/24
       VpcId: !Ref VPC
       MapPublicIpOnLaunch: true
+  DBSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      CidrBlock: 10.0.2.0/24
+      VpcId: !Ref VPC
+  DBSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      CidrBlock: 10.0.3.0/24
+      VpcId: !Ref VPC
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Collection of subnets for RDS instance to use
+      SubnetIds:
+        - !Ref DBSubnet1
+        - !Ref DBSubnet2
+  WebServerRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+  WebServerRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref WebServerSubnet
+      RouteTableId: !Ref WebServerRouteTable
+  RoutePublicWebServerToInternet:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref WebServerRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
 
   # Security Groups
   WebServerSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Security group for public web servers
+      GroupDescription: Firewall for public web servers
       VpcId: !Ref VPC
       SecurityGroupIngress:
         - IpProtocol: tcp
@@ -50,23 +90,44 @@ Resources:
           FromPort: 0
           ToPort: 65535
           CidrIp: 0.0.0.0/0
+  DBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Firewall for MV RDS instance
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref WebServerSecurityGroup
 
   # Web Servers
   WebServer:
     Type: AWS::EC2::Instance
-    DependsOn: VPCGatewayAttachment
     Properties:
       ImageId: ami-4fffc834
       InstanceType: t2.micro
       KeyName: !Ref KeyName
-      SubnetId: !Ref PublicSubnet
+      SubnetId: !Ref WebServerSubnet
       SecurityGroupIds:
         - !Ref WebServerSecurityGroup
-      # NetworkInterfaces:
-      #   - AssociatePublicIpAddress: true
-      #     DeleteOnTermination: true
-      #     Description: NIC for associating a public IP
-      #     DeviceIndex: 0
-      #     GroupSet:
-      #       - !Ref WebServerSecurityGroup
-      #     SubnetId: !Ref PublicSubnet
+
+  # Database
+  MVDatabase:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      AllocatedStorage: 5  # GB
+      DBInstanceClass: db.t2.micro
+      DBInstanceIdentifier: matchvote-db
+      DBName: matchvote
+      Engine: postgres
+      MasterUsername: !Ref DBMasterUsername
+      MasterUserPassword: !Ref DBMasterUserPassword
+      VPCSecurityGroups:
+        - !GetAtt DBSecurityGroup.GroupId
+      DBSubnetGroupName: !Ref DBSubnetGroup
+
+Outputs:
+  WebServerHostname:
+    Description: DNS hostname of public web server instance
+    Value: !GetAtt WebServer.DNSName

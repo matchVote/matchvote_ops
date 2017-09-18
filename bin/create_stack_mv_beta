@@ -1,17 +1,22 @@
 #!/bin/bash
 
 TEMPLATE_FILE=mv-beta.yaml
+TEMPLATE_BUCKET=mv-cloudformation-templates
+KEY_NAME=mv-beta-web-server
+ALLOWED_IP_RANGE=75.190.112.201/32
+STACK_NAME=mv-beta
+MASTER_USERNAME=$1
+MASTER_PASSWORD=$2
 
 # Upload template to S3
-aws s3 cp cloudformation_templates/$TEMPLATE_FILE s3://mv-cloudformation-templates
-
+aws s3 cp cloudformation_templates/$TEMPLATE_FILE s3://$TEMPLATE_BUCKET
 
 # Create stack
 aws cloudformation create-stack \
-  --stack-name mv-beta \
-  --template-url https://s3.amazonaws.com/mv-cloudformation-templates/$TEMPLATE_FILE \
+  --stack-name $STACK_NAME \
+  --template-url https://s3.amazonaws.com/$TEMPLATE_BUCKET/$TEMPLATE_FILE \
   --parameters \
-    ParameterKey=KeyName,ParameterValue=mv-beta-web-server \
-    ParameterKey=IpRangeAllowedForSSH,ParameterValue=75.190.112.201/32
-
-echo "Stack mv-beta is being created"
+    ParameterKey=KeyName,ParameterValue=$KEY_NAME \
+    ParameterKey=IpRangeAllowedForSSH,ParameterValue=$ALLOWED_IP_RANGE \
+    ParameterKey=DBMasterUserPassword,ParameterValue=$MASTER_PASSWORD \
+    ParameterKey=DBMasterUsername,ParameterValue=$MASTER_USERNAME
