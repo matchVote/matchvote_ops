@@ -1,0 +1,72 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Stack to support the matchVote web app
+
+Parameters:
+  KeyName:
+    Description: Key for SSH access
+    Type: AWS::EC2::KeyPair::KeyName
+  IpRangeAllowedForSSH:
+    Description: The IP to allow for connecting by SSH
+    Type: String
+
+Resources:
+  # Set up VPC
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.0.1.0/24
+      VpcId: !Ref VPC
+      MapPublicIpOnLaunch: true
+
+  # Security Groups
+  WebServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for public web servers
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref IpRangeAllowedForSSH
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: 0.0.0.0/0
+
+  # Web Servers
+  WebServer:
+    Type: AWS::EC2::Instance
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      ImageId: ami-4fffc834
+      InstanceType: t2.micro
+      KeyName: !Ref KeyName
+      SubnetId: !Ref PublicSubnet
+      SecurityGroupIds:
+        - !Ref WebServerSecurityGroup
+      # NetworkInterfaces:
+      #   - AssociatePublicIpAddress: true
+      #     DeleteOnTermination: true
+      #     Description: NIC for associating a public IP
+      #     DeviceIndex: 0
+      #     GroupSet:
+      #       - !Ref WebServerSecurityGroup
+      #     SubnetId: !Ref PublicSubnet

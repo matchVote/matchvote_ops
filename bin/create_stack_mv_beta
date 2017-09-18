@@ -1,0 +1,17 @@
+#!/bin/bash
+
+TEMPLATE_FILE=mv-beta.yaml
+
+# Upload template to S3
+aws s3 cp cloudformation_templates/$TEMPLATE_FILE s3://mv-cloudformation-templates
+
+
+# Create stack
+aws cloudformation create-stack \
+  --stack-name mv-beta \
+  --template-url https://s3.amazonaws.com/mv-cloudformation-templates/$TEMPLATE_FILE \
+  --parameters \
+    ParameterKey=KeyName,ParameterValue=mv-beta-web-server \
+    ParameterKey=IpRangeAllowedForSSH,ParameterValue=75.190.112.201/32
+
+echo "Stack mv-beta is being created"
