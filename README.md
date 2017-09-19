@@ -6,5 +6,8 @@ instead of in the individual app repos.
 ### Setup
     bin/build
 
+### Utilities
+* Check the status of a stack: `bin/stack_status <stack-name>`
+
 #### Dependencies
 * Docker
