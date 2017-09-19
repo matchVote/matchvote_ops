@@ -130,4 +130,4 @@ Resources:
 Outputs:
   WebServerHostname:
     Description: DNS hostname of public web server instance
-    Value: !GetAtt WebServer.DNSName
+    Value: !GetAtt WebServer.PublicDnsName

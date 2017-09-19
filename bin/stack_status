@@ -2,6 +2,8 @@
 
 STACK_NAME=$1
 
-aws cloudformation describe-stacks \
-  --stack-name $STACK_NAME \
-  --query "Stacks[0].StackStatus"
+docker run --rm -it \
+  --env-file .env \
+  --mount type=bind,source="$(pwd)"/scripts,target=/usr/src/scripts \
+  mv_ops \
+  python scripts/stack_status.py $STACK_NAME

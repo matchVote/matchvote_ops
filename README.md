@@ -3,6 +3,8 @@ A collection of scripts and artifacts used for various infrastructure and develo
 In the future, production deployment procedures for all apps could be housed here
 instead of in the individual app repos.
 
-### Dependencies
-##### awscli
-    install instructions
+### Setup
+    bin/build
+
+#### Dependencies
+* Docker
