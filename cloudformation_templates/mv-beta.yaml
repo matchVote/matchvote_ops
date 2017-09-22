@@ -11,12 +11,11 @@ Parameters:
   DBMasterUsername:
     Description: Username for master user in database
     Type: String
-  DBMasterUserPassword:
+  DBMasterPassword:
     Description: Password for master user in database
     Type: String
 
 Resources:
-  # Set up VPC
   VPC:
     Type: AWS::EC2::VPC
     Properties:
@@ -24,54 +23,54 @@ Resources:
       EnableDnsHostnames: true
   InternetGateway:
     Type: AWS::EC2::InternetGateway
-  VPCGatewayAttachment:
+  VPCInternetGatewayAttachment:
     Type: AWS::EC2::VPCGatewayAttachment
     Properties:
       VpcId: !Ref VPC
       InternetGatewayId: !Ref InternetGateway
-  WebServerSubnet:
+
+  PublicSubnet:
     Type: AWS::EC2::Subnet
     Properties:
       CidrBlock: 10.0.1.0/24
       VpcId: !Ref VPC
       MapPublicIpOnLaunch: true
-  DBSubnet1:
-    Type: AWS::EC2::Subnet
-    Properties:
-      AvailabilityZone: !Select [0, !GetAZs ""]
-      CidrBlock: 10.0.2.0/24
-      VpcId: !Ref VPC
-  DBSubnet2:
-    Type: AWS::EC2::Subnet
-    Properties:
-      AvailabilityZone: !Select [1, !GetAZs ""]
-      CidrBlock: 10.0.3.0/24
-      VpcId: !Ref VPC
-  DBSubnetGroup:
-    Type: AWS::RDS::DBSubnetGroup
-    Properties:
-      DBSubnetGroupDescription: Collection of subnets for RDS instance to use
-      SubnetIds:
-        - !Ref DBSubnet1
-        - !Ref DBSubnet2
-  WebServerRouteTable:
+  # DBSubnet1:
+  #   Type: AWS::EC2::Subnet
+  #   Properties:
+  #     AvailabilityZone: !Select [0, !GetAZs ""]
+  #     CidrBlock: 10.0.2.0/24
+  #     VpcId: !Ref VPC
+  # DBSubnet2:
+  #   Type: AWS::EC2::Subnet
+  #   Properties:
+  #     AvailabilityZone: !Select [1, !GetAZs ""]
+  #     CidrBlock: 10.0.3.0/24
+  #     VpcId: !Ref VPC
+  # DBSubnetGroup:
+  #   Type: AWS::RDS::DBSubnetGroup
+  #   Properties:
+  #     DBSubnetGroupDescription: Collection of subnets for RDS instance to use
+  #     SubnetIds:
+  #       - !Ref DBSubnet1
+  #       - !Ref DBSubnet2
+  PublicSubnetRouteTable:
     Type: AWS::EC2::RouteTable
     Properties:
       VpcId: !Ref VPC
-  WebServerRouteTableAssociation:
+  PublicSubnetRouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
-      SubnetId: !Ref WebServerSubnet
-      RouteTableId: !Ref WebServerRouteTable
-  RoutePublicWebServerToInternet:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref PublicSubnetRouteTable
+  RoutePublicSubnetToInternet:
     Type: AWS::EC2::Route
     Properties:
-      RouteTableId: !Ref WebServerRouteTable
+      RouteTableId: !Ref PublicSubnetRouteTable
       DestinationCidrBlock: 0.0.0.0/0
       GatewayId: !Ref InternetGateway
 
-  # Security Groups
-  WebServerSecurityGroup:
+  PublicSubnetSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Firewall for public web servers
@@ -90,44 +89,127 @@ Resources:
           FromPort: 0
           ToPort: 65535
           CidrIp: 0.0.0.0/0
-  DBSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: Firewall for MV RDS instance
-      VpcId: !Ref VPC
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 5432
-          ToPort: 5432
-          SourceSecurityGroupId: !Ref WebServerSecurityGroup
+  # DBSecurityGroup:
+  #   Type: AWS::EC2::SecurityGroup
+  #   Properties:
+  #     GroupDescription: Firewall for MV RDS instance
+  #     VpcId: !Ref VPC
+  #     SecurityGroupIngress:
+  #       - IpProtocol: tcp
+  #         FromPort: 5432
+  #         ToPort: 5432
+  #         SourceSecurityGroupId: !Ref WebServerSecurityGroup
 
-  # Web Servers
-  WebServer:
-    Type: AWS::EC2::Instance
+  # ECS
+  Cluster:
+    Type: AWS::ECS::Cluster
     Properties:
-      ImageId: ami-4fffc834
+      ClusterName: !Ref AWS::StackName
+  ContainerInstanceLaunchConfiguration:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      ImageId: ami-9eb4b1e5
       InstanceType: t2.micro
+      AssociatePublicIpAddress: true
       KeyName: !Ref KeyName
-      SubnetId: !Ref WebServerSubnet
-      SecurityGroupIds:
-        - !Ref WebServerSecurityGroup
+      IamInstanceProfile: !Ref ContainerInstanceProfile
+      SecurityGroups:
+        - !Ref PublicSubnetSecurityGroup
+      UserData:
+        "Fn::Base64": !Sub |
+          #!/bin/bash
+          # sudo yum update
+          # sudo yum install postgresql95.x86_64 aws-cfn-bootstrap
+          echo ECS_CLUSTER=${Cluster} >> /etc/ecs/ecs.config
+  ClusterAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      VPCZoneIdentifier:
+        - !Ref PublicSubnet
+      LaunchConfigurationName: !Ref ContainerInstanceLaunchConfiguration
+      MinSize: 1
+      MaxSize: 1
+      DesiredCapacity: 1
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName} ECS Instance
+          PropagateAtLaunch: true
+  EcsInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      RoleName: !Sub ${AWS::StackName}-EcsInstanceRole-${AWS::Region}
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Action: "sts:AssumeRole"
+            Principal:
+              Service: ec2.amazonaws.com
+      Policies:
+        - PolicyName: ecs-service
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Resource: "*"
+                Action:
+                  - "ecs:CreateCluster"
+                  - "ecs:DeregisterContainerInstance"
+                  - "ecs:DiscoverPollEndpoint"
+                  - "ecs:Poll"
+                  - "ecs:RegisterContainerInstance"
+                  - "ecs:StartTelemetrySession"
+                  - "ecs:Submit*"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                  - "ecr:BatchCheckLayerAvailability"
+                  - "ecr:BatchGetImage"
+                  - "ecr:GetDownloadUrlForLayer"
+                  - "ecr:GetAuthorizationToken"
+  ContainerInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles:
+        - !Ref EcsInstanceRole
+  WebAppService:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster: !Ref Cluster
+      DesiredCount: 1
+      ServiceName: mv-web-app
+      TaskDefinition: !Ref TaskDefinition
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub ${AWS::StackName}-web-app
+      ContainerDefinitions:
+        - Name: mv-web-app
+          Essential: true
+          Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/mv-web-app:latest
+          Memory: 1024
+          PortMappings:
+            - ContainerPort: 80
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+                awslogs-group: !Ref AWS::StackName
+                awslogs-region: !Ref AWS::Region
 
   # Database
-  MVDatabase:
-    Type: AWS::RDS::DBInstance
-    Properties:
-      AllocatedStorage: 5  # GB
-      DBInstanceClass: db.t2.micro
-      DBInstanceIdentifier: matchvote-db
-      DBName: matchvote
-      Engine: postgres
-      MasterUsername: !Ref DBMasterUsername
-      MasterUserPassword: !Ref DBMasterUserPassword
-      VPCSecurityGroups:
-        - !GetAtt DBSecurityGroup.GroupId
-      DBSubnetGroupName: !Ref DBSubnetGroup
+  # MVDatabase:
+  #   Type: AWS::RDS::DBInstance
+  #   Properties:
+  #     AllocatedStorage: 5  # GB
+  #     DBInstanceClass: db.t2.micro
+  #     DBInstanceIdentifier: matchvote-db
+  #     DBName: matchvote
+  #     Engine: postgres
+  #     MasterUsername: !Ref DBMasterUsername
+  #     MasterUserPassword: !Ref DBMasterPassword
+  #     VPCSecurityGroups:
+  #       - !GetAtt DBSecurityGroup.GroupId
+  #     DBSubnetGroupName: !Ref DBSubnetGroup
 
 Outputs:
-  WebServerHostname:
-    Description: DNS hostname of public web server instance
-    Value: !GetAtt WebServer.PublicDnsName
+  Cluster:
+    Value: !Ref Cluster
