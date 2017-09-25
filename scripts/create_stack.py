@@ -7,9 +7,9 @@ import boto3
 from utils import log
 
 stack_name = sys.argv[1]
+template_bucket = os.getenv('TEMPLATE_BUCKET')
 master_username = os.getenv('MASTER_USERNAME')
 master_password = os.getenv('MASTER_PASSWORD')
-template_bucket = os.getenv('TEMPLATE_BUCKET')
 
 template_file = f'{stack_name}.yaml'
 cloudformation = boto3.client('cloudformation')
@@ -43,3 +43,4 @@ with log('Stack creation in progress...'):
         stack = cloudformation.describe_stacks(StackName=stack_name)['Stacks'][0]
 
 print(f'\nStack {stack_name} created successfully!')
+print('Now would be the time to set up the default web app DB user')
