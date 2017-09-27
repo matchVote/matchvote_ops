@@ -8,11 +8,23 @@ Parameters:
   IpRangeAllowedForSSH:
     Description: The IP to allow for connecting by SSH
     Type: String
-  DBMasterUsername:
+  DBName:
+    Description: Name of database
+    Type: String
+  DBPort:
+    Description: Port on which the database server is running
+    Type: String
+  DBUsername:
     Description: Username for master user in database
     Type: String
-  DBMasterPassword:
+  DBPassword:
     Description: Password for master user in database
+    Type: String
+  ContainerWebServerPort:
+    Description: Port in which to bind container web server
+    Type: String
+  ContainerEnvironment:
+    Description: Environment setting in which container will run
     Type: String
 
 Resources:
@@ -35,25 +47,6 @@ Resources:
       CidrBlock: 10.0.1.0/24
       VpcId: !Ref VPC
       MapPublicIpOnLaunch: true
-  DBSubnet1:
-    Type: AWS::EC2::Subnet
-    Properties:
-      AvailabilityZone: !Select [0, !GetAZs ""]
-      CidrBlock: 10.0.2.0/24
-      VpcId: !Ref VPC
-  DBSubnet2:
-    Type: AWS::EC2::Subnet
-    Properties:
-      AvailabilityZone: !Select [1, !GetAZs ""]
-      CidrBlock: 10.0.3.0/24
-      VpcId: !Ref VPC
-  DBSubnetGroup:
-    Type: AWS::RDS::DBSubnetGroup
-    Properties:
-      DBSubnetGroupDescription: Collection of subnets for RDS instance to use
-      SubnetIds:
-        - !Ref DBSubnet1
-        - !Ref DBSubnet2
   PublicSubnetRouteTable:
     Type: AWS::EC2::RouteTable
     Properties:
@@ -69,7 +62,6 @@ Resources:
       RouteTableId: !Ref PublicSubnetRouteTable
       DestinationCidrBlock: 0.0.0.0/0
       GatewayId: !Ref InternetGateway
-
   PublicSubnetSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -89,6 +81,26 @@ Resources:
           FromPort: 0
           ToPort: 65535
           CidrIp: 0.0.0.0/0
+
+  DBSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      CidrBlock: 10.0.2.0/24
+      VpcId: !Ref VPC
+  DBSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      CidrBlock: 10.0.3.0/24
+      VpcId: !Ref VPC
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Collection of subnets for RDS instance to use
+      SubnetIds:
+        - !Ref DBSubnet1
+        - !Ref DBSubnet2
   DBSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -100,7 +112,6 @@ Resources:
           ToPort: 5432
           SourceSecurityGroupId: !Ref PublicSubnetSecurityGroup
 
-  # ECS
   Cluster:
     Type: AWS::ECS::Cluster
     Properties:
@@ -108,7 +119,6 @@ Resources:
   ContainerInstanceLaunchConfiguration:
     Type: AWS::AutoScaling::LaunchConfiguration
     Properties:
-      # ImageId: ami-4fffc834
       ImageId: ami-9eb4b1e5
       InstanceType: t2.micro
       AssociatePublicIpAddress: true
@@ -191,39 +201,38 @@ Resources:
         - Name: mv-web-app
           Essential: true
           Memory: 512
-          PortMappings:
-            - ContainerPort: 80
-          Environment:
-            - Name: DATABASE_URL
-              Value: !Join ["",
-                [
-                  "postgres://${DBMasterUsername}:${DBMasterPassword}@",
-                  !GetAtt MVDatabase.Endpoint.Address,
-                  "5432/matchvote"
-                ]]
           Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/mv-web-app:latest
-          LogConfiguration:
-            LogDriver: awslogs
-            Options:
-                awslogs-group: !Ref AWS::StackName
-                awslogs-region: !Ref AWS::Region
-
+          PortMappings:
+            - ContainerPort: !Ref ContainerWebServerPort
+          Environment:
+            - Name: DB_HOST
+              Value: !GetAtt MVDatabase.Endpoint.Address
+            - Name: DB_NAME
+              Value: !Ref DBName
+            - Name: DB_PORT
+              Value: !Ref DBPort
+            - Name: DB_USER
+              Value: !Ref DBUsername
+            - Name: DB_PASSWORD
+              Value: !Ref DBPassword
+            - Name: WEB_SERVER_PORT
+              Value: !Ref ContainerWebServerPort
+            - Name: RAILS_ENV
+              Value: !Ref ContainerEnvironment
   MVDatabase:
     Type: AWS::RDS::DBInstance
     Properties:
       AllocatedStorage: 5  # GB
       DBInstanceClass: db.t2.micro
       DBInstanceIdentifier: matchvote-db
-      DBName: matchvote
+      DBName: !Ref DBName
       Engine: postgres
-      MasterUsername: !Ref DBMasterUsername
-      MasterUserPassword: !Ref DBMasterPassword
+      MasterUsername: !Ref DBUsername
+      MasterUserPassword: !Ref DBPassword
       VPCSecurityGroups:
         - !GetAtt DBSecurityGroup.GroupId
       DBSubnetGroupName: !Ref DBSubnetGroup
 
 Outputs:
-  Cluster:
-    Value: !Ref Cluster
-  DBDomainHost:
+  DBHost:
     Value: !GetAtt MVDatabase.Endpoint.Address
