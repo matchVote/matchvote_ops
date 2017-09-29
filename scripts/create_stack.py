@@ -3,23 +3,18 @@ import sys
 import time
 
 import boto3
+import yaml
 
 from utils import log
 
 stack_name = sys.argv[1]
 template_bucket = os.getenv('TEMPLATE_BUCKET')
-stack_parameters = [
-    {'ParameterKey': 'KeyName', 'ParameterValue': os.getenv('SSH_KEY_NAME')},
-    {'ParameterKey': 'IpRangeAllowedForSSH', 'ParameterValue': os.getenv('ALLOWED_SSH_CIDR_IP')},
-    {'ParameterKey': 'DBUsername', 'ParameterValue': os.getenv('DB_USERNAME')},
-    {'ParameterKey': 'DBPassword', 'ParameterValue': os.getenv('DB_PASSWORD')},
-    {'ParameterKey': 'DBPort', 'ParameterValue': os.getenv('DB_PORT')},
-    {'ParameterKey': 'DBName', 'ParameterValue': os.getenv('DB_NAME')},
-    {'ParameterKey': 'ContainerWebServerPort', 'ParameterValue': os.getenv('WEB_SERVER_PORT')},
-    {'ParameterKey': 'ContainerEnvironment', 'ParameterValue': os.getenv('RAILS_ENV')},
-    ]
-
 template_file = f'{stack_name}.yaml'
+stack_parameters = []
+with open(f'config/{stack_name}-parameters.yaml') as f:
+    for key, value in yaml.load(f.read())['params'].items():
+        stack_parameters.append({'ParameterKey': key, 'ParameterValue': value})
+
 cloudformation = boto3.client('cloudformation')
 s3 = boto3.client('s3')
 

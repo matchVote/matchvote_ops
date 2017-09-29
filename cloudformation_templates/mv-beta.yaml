@@ -26,6 +26,15 @@ Parameters:
   ContainerEnvironment:
     Description: Environment setting in which container will run
     Type: String
+  AwsRegion:
+    Description: Region in which instance resides
+    Type: String
+  ProfilePicBucket:
+    Description: Bucket in which profile pictures are uploaded
+    Type: String
+  SecretKeyBase:
+    Description: Key base used to verify signed cookies
+    Type: String
 
 Resources:
   VPC:
@@ -176,10 +185,13 @@ Resources:
                   - "ecr:BatchGetImage"
                   - "ecr:GetDownloadUrlForLayer"
                   - "ecr:GetAuthorizationToken"
+                  - "s3:GetObject"
+                  - "s3:PutObject"
   ContainerInstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
       Path: /
+      InstanceProfileName: WebAppInstanceProfile
       Roles:
         - !Ref EcsInstanceRole
   MVWebAppRepository:
@@ -219,6 +231,12 @@ Resources:
               Value: !Ref ContainerWebServerPort
             - Name: RAILS_ENV
               Value: !Ref ContainerEnvironment
+            - Name: AWS_REGION
+              Value: !Ref AwsRegion
+            - Name: MV_PROFILE_PIC_BUCKET
+              Value: !Ref ProfilePicBucket
+            - Name: SECRET_KEY_BASE
+              Value: !Ref SecretKeyBase
   MVDatabase:
     Type: AWS::RDS::DBInstance
     Properties:

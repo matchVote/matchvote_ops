@@ -7,4 +7,5 @@ RUN apt-get update \
 RUN mkdir -p /usr/src
 WORKDIR /usr/src
 
-RUN pip install boto3
+COPY requirements.txt /usr/src
+RUN pip install --no-cache-dir -r requirements.txt
