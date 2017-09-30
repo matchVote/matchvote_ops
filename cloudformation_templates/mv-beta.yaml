@@ -212,10 +212,16 @@ Resources:
       ContainerDefinitions:
         - Name: mv-web-app
           Essential: true
-          Memory: 512
+          Memory: 495
           Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/mv-web-app:latest
           PortMappings:
             - ContainerPort: !Ref ContainerWebServerPort
+              HostPort: 80  # remove this with the addition of an ALB
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Sub awslogs-${AWS::StackName}-web-app
+              awslogs-region: !Ref AWS::Region
           Environment:
             - Name: DB_HOST
               Value: !GetAtt MVDatabase.Endpoint.Address
@@ -237,6 +243,11 @@ Resources:
               Value: !Ref ProfilePicBucket
             - Name: SECRET_KEY_BASE
               Value: !Ref SecretKeyBase
+  WebAppLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub awslogs-${AWS::StackName}-web-app
+      RetentionInDays: 3
   MVDatabase:
     Type: AWS::RDS::DBInstance
     Properties:
