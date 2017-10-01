@@ -91,13 +91,13 @@ Resources:
           ToPort: 65535
           CidrIp: 0.0.0.0/0
 
-  DBSubnet1:
+  PrivateSubnet1:
     Type: AWS::EC2::Subnet
     Properties:
       AvailabilityZone: !Select [0, !GetAZs ""]
       CidrBlock: 10.0.2.0/24
       VpcId: !Ref VPC
-  DBSubnet2:
+  PrivateSubnet2:
     Type: AWS::EC2::Subnet
     Properties:
       AvailabilityZone: !Select [1, !GetAZs ""]
@@ -108,8 +108,8 @@ Resources:
     Properties:
       DBSubnetGroupDescription: Collection of subnets for RDS instance to use
       SubnetIds:
-        - !Ref DBSubnet1
-        - !Ref DBSubnet2
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
   DBSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:

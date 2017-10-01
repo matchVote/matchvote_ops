@@ -2,7 +2,5 @@
 
 STACK_NAME=$1
 
-# Delete previous stack
-aws cloudformation delete-stack --stack-name $STACK_NAME
-
 echo "Stack deletion started"
+aws cloudformation delete-stack --stack-name $STACK_NAME
