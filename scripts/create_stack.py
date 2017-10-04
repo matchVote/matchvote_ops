@@ -13,7 +13,8 @@ template_file = f'{stack_name}.yaml'
 stack_parameters = []
 with open(f'config/{stack_name}-parameters.yaml') as f:
     for key, value in yaml.load(f.read())['params'].items():
-        stack_parameters.append({'ParameterKey': key, 'ParameterValue': value})
+        param = {'ParameterKey': key, 'ParameterValue': str(value)}
+        stack_parameters.append(param)
 
 cloudformation = boto3.client('cloudformation')
 s3 = boto3.client('s3')

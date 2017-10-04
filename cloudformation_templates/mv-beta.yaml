@@ -185,8 +185,25 @@ Resources:
                   - "ecr:BatchGetImage"
                   - "ecr:GetDownloadUrlForLayer"
                   - "ecr:GetAuthorizationToken"
-                  - "s3:GetObject"
-                  - "s3:PutObject"
+  WebAppContainerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      RoleName: !Sub ${AWS::StackName}-${AWS::Region}-matchvote-container-role
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Action: "sts:AssumeRole"
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+      Policies:
+        - PolicyName: matchvote-s3-profile-pic-bucket-access
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Resource: !Sub arn:aws:s3:::${ProfilePicBucket}/*
+                Action:
+                  - "s3:*"
   ContainerInstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
@@ -209,6 +226,7 @@ Resources:
     Type: AWS::ECS::TaskDefinition
     Properties:
       Family: !Sub ${AWS::StackName}-web-app
+      TaskRoleArn: !GetAtt WebAppContainerRole.Arn
       ContainerDefinitions:
         - Name: mv-web-app
           Essential: true
