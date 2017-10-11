@@ -273,6 +273,10 @@ Resources:
     Type: AWS::ECR::Repository
     Properties:
       RepositoryName: matchvote
+  DogoodRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: mrs-silence-dogood
 
   MatchvoteService:
     Type: AWS::ECS::Service
@@ -344,7 +348,7 @@ Resources:
         - Name: mrs-silence-dogood
           Essential: true
           Memory: 1000
-          Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/dogood:latest
+          Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/mrs-silence-dogood:latest
           LogConfiguration:
             LogDriver: awslogs
             Options:
