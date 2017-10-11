@@ -2,6 +2,9 @@ AWSTemplateFormatVersion: 2010-09-09
 Description: Stack to support the matchVote web app
 
 Parameters:
+  ImageId:
+    Description: AMI Image to use for instances
+    Type: String
   KeyName:
     Description: Key for SSH access
     Type: AWS::EC2::KeyPair::KeyName
@@ -20,7 +23,7 @@ Parameters:
   DBPassword:
     Description: Password for master user in database
     Type: String
-  ContainerWebServerPort:
+  MatchvoteWebServerPort:
     Description: Port in which to bind container web server
     Type: String
   ContainerEnvironment:
@@ -71,7 +74,7 @@ Resources:
       RouteTableId: !Ref PublicSubnetRouteTable
       DestinationCidrBlock: 0.0.0.0/0
       GatewayId: !Ref InternetGateway
-  PublicSubnetSecurityGroup:
+  MatchvoteSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Firewall for public web servers
@@ -81,6 +84,21 @@ Resources:
           FromPort: 80
           ToPort: 80
           CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref IpRangeAllowedForSSH
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: 0.0.0.0/0
+  DogoodSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Firewall for Mrs Silence Dogood
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 22
           ToPort: 22
@@ -119,41 +137,87 @@ Resources:
         - IpProtocol: tcp
           FromPort: 5432
           ToPort: 5432
-          SourceSecurityGroupId: !Ref PublicSubnetSecurityGroup
+          SourceSecurityGroupId: !Ref MatchvoteSecurityGroup
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref DogoodSecurityGroup
+  MatchvoteDatabase:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      AllocatedStorage: 5  # GB
+      DBInstanceClass: db.t2.micro
+      DBInstanceIdentifier: matchvote-db
+      DBName: !Ref DBName
+      Engine: postgres
+      MasterUsername: !Ref DBUsername
+      MasterUserPassword: !Ref DBPassword
+      VPCSecurityGroups:
+        - !GetAtt DBSecurityGroup.GroupId
+      DBSubnetGroupName: !Ref DBSubnetGroup
 
   Cluster:
     Type: AWS::ECS::Cluster
     Properties:
       ClusterName: !Ref AWS::StackName
-  ContainerInstanceLaunchConfiguration:
-    Type: AWS::AutoScaling::LaunchConfiguration
-    Properties:
-      ImageId: ami-9eb4b1e5
-      InstanceType: t2.micro
-      AssociatePublicIpAddress: true
-      KeyName: !Ref KeyName
-      IamInstanceProfile: !Ref ContainerInstanceProfile
-      SecurityGroups:
-        - !Ref PublicSubnetSecurityGroup
-      UserData:
-        "Fn::Base64": !Sub |
-          #!/bin/bash
-          sudo yum update
-          sudo yum install postgresql95.x86_64 aws-cfn-bootstrap
-          echo ECS_CLUSTER=${Cluster} >> /etc/ecs/ecs.config
-  ClusterAutoScalingGroup:
+  MatchvoteAutoScalingGroup:
     Type: AWS::AutoScaling::AutoScalingGroup
     Properties:
       VPCZoneIdentifier:
         - !Ref PublicSubnet
-      LaunchConfigurationName: !Ref ContainerInstanceLaunchConfiguration
+      LaunchConfigurationName: !Ref MatchvoteLaunchConfiguration
       MinSize: 1
       MaxSize: 1
       DesiredCapacity: 1
       Tags:
         - Key: Name
-          Value: !Sub ${AWS::StackName} ECS Instance
+          Value: !Sub ${AWS::StackName} matchVote ECS Instance
           PropagateAtLaunch: true
+  MatchvoteLaunchConfiguration:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      ImageId: !Ref ImageId
+      InstanceType: t2.micro
+      AssociatePublicIpAddress: true
+      KeyName: !Ref KeyName
+      IamInstanceProfile: !Ref ContainerInstanceProfile
+      SecurityGroups:
+        - !Ref MatchvoteSecurityGroup
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          sudo yum update
+          sudo yum install postgresql95.x86_64 aws-cfn-bootstrap
+          cat <<'EOF' >> /etc/ecs/ecs.config
+          ECS_CLUSTER=${Cluster}
+          ECS_INSTANCE_ATTRIBUTES={"container_type":"matchvote"}
+          EOF
+  DogoodInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref ImageId
+      InstanceType: t2.micro
+      KeyName: !Ref KeyName
+      IamInstanceProfile: !Ref ContainerInstanceProfile
+      SubnetId: !Ref PublicSubnet  # NAT Gateway will need to be used if subnet is private
+      SecurityGroupIds:
+        - !GetAtt DogoodSecurityGroup.GroupId
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          sudo yum update
+          echo ECS_CLUSTER=${Cluster} >> /etc/ecs/ecs.config
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName} Mrs-Silence-Dogood ECS Instance
+
+  ContainerInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      InstanceProfileName: ContainerInstanceProfile
+      Roles:
+        - !Ref EcsInstanceRole
   EcsInstanceRole:
     Type: AWS::IAM::Role
     Properties:
@@ -185,7 +249,7 @@ Resources:
                   - "ecr:BatchGetImage"
                   - "ecr:GetDownloadUrlForLayer"
                   - "ecr:GetAuthorizationToken"
-  WebAppContainerRole:
+  MatchvoteContainerRole:
     Type: AWS::IAM::Role
     Properties:
       Path: /
@@ -204,45 +268,43 @@ Resources:
                 Resource: !Sub arn:aws:s3:::${ProfilePicBucket}/*
                 Action:
                   - "s3:*"
-  ContainerInstanceProfile:
-    Type: AWS::IAM::InstanceProfile
-    Properties:
-      Path: /
-      InstanceProfileName: WebAppInstanceProfile
-      Roles:
-        - !Ref EcsInstanceRole
-  MVWebAppRepository:
+
+  MatchvoteRepository:
     Type: AWS::ECR::Repository
     Properties:
-      RepositoryName: mv-web-app
-  WebAppService:
+      RepositoryName: matchvote
+
+  MatchvoteService:
     Type: AWS::ECS::Service
     Properties:
       Cluster: !Ref Cluster
       DesiredCount: 0
-      ServiceName: mv-web-app
-      TaskDefinition: !Ref TaskDefinition
-  TaskDefinition:
+      ServiceName: matchvote
+      TaskDefinition: !Ref MatchvoteTaskDefinition
+      PlacementConstraints:
+        - Type: memberOf
+          Expression: attribute:container_type == matchvote
+  MatchvoteTaskDefinition:
     Type: AWS::ECS::TaskDefinition
     Properties:
-      Family: !Sub ${AWS::StackName}-web-app
-      TaskRoleArn: !GetAtt WebAppContainerRole.Arn
+      Family: !Sub ${AWS::StackName}-matchvote
+      TaskRoleArn: !GetAtt MatchvoteContainerRole.Arn
       ContainerDefinitions:
-        - Name: mv-web-app
+        - Name: matchvote
           Essential: true
           Memory: 495
-          Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/mv-web-app:latest
+          Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/matchvote:latest
           PortMappings:
-            - ContainerPort: !Ref ContainerWebServerPort
+            - ContainerPort: !Ref MatchvoteWebServerPort
               HostPort: 80  # remove this with the addition of an ALB
           LogConfiguration:
             LogDriver: awslogs
             Options:
-              awslogs-group: !Sub awslogs-${AWS::StackName}-web-app
+              awslogs-group: !Sub awslogs-${AWS::StackName}-matchvote
               awslogs-region: !Ref AWS::Region
           Environment:
             - Name: DB_HOST
-              Value: !GetAtt MVDatabase.Endpoint.Address
+              Value: !GetAtt MatchvoteDatabase.Endpoint.Address
             - Name: DB_NAME
               Value: !Ref DBName
             - Name: DB_PORT
@@ -252,7 +314,7 @@ Resources:
             - Name: DB_PASSWORD
               Value: !Ref DBPassword
             - Name: WEB_SERVER_PORT
-              Value: !Ref ContainerWebServerPort
+              Value: !Ref MatchvoteWebServerPort
             - Name: RAILS_ENV
               Value: !Ref ContainerEnvironment
             - Name: AWS_REGION
@@ -261,25 +323,54 @@ Resources:
               Value: !Ref ProfilePicBucket
             - Name: SECRET_KEY_BASE
               Value: !Ref SecretKeyBase
-  WebAppLogGroup:
+  MatchvoteLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub awslogs-${AWS::StackName}-web-app
+      LogGroupName: !Sub awslogs-${AWS::StackName}-matchvote
       RetentionInDays: 3
-  MVDatabase:
-    Type: AWS::RDS::DBInstance
+
+  DogoodService:
+    Type: AWS::ECS::Service
     Properties:
-      AllocatedStorage: 5  # GB
-      DBInstanceClass: db.t2.micro
-      DBInstanceIdentifier: matchvote-db
-      DBName: !Ref DBName
-      Engine: postgres
-      MasterUsername: !Ref DBUsername
-      MasterUserPassword: !Ref DBPassword
-      VPCSecurityGroups:
-        - !GetAtt DBSecurityGroup.GroupId
-      DBSubnetGroupName: !Ref DBSubnetGroup
+      Cluster: !Ref Cluster
+      DesiredCount: 0
+      ServiceName: mrs-silence-dogood
+      TaskDefinition: !Ref DogoodTaskDefinition
+  DogoodTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub ${AWS::StackName}-dogood
+      ContainerDefinitions:
+        - Name: mrs-silence-dogood
+          Essential: true
+          Memory: 1000
+          Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/dogood:latest
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Sub awslogs-${AWS::StackName}-dogood
+              awslogs-region: !Ref AWS::Region
+          Environment:
+            - Name: DB_HOST
+              Value: !GetAtt MatchvoteDatabase.Endpoint.Address
+            - Name: DB_NAME
+              Value: !Ref DBName
+            - Name: DB_PORT
+              Value: !Ref DBPort
+            - Name: DB_USER
+              Value: !Ref DBUsername
+            - Name: DB_PASSWORD
+              Value: !Ref DBPassword
+            - Name: FEEDER_ENV
+              Value: !Ref ContainerEnvironment
+            - Name: AWS_REGION
+              Value: !Ref AwsRegion
+  DogoodLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub awslogs-${AWS::StackName}-dogood
+      RetentionInDays: 3
 
 Outputs:
   DBHost:
-    Value: !GetAtt MVDatabase.Endpoint.Address
+    Value: !GetAtt MatchvoteDatabase.Endpoint.Address

@@ -2,5 +2,8 @@
 
 STACK_NAME=$1
 
-echo "Stack deletion started"
-aws cloudformation delete-stack --stack-name $STACK_NAME
+docker run --rm -it \
+  --env-file .env \
+  --mount type=bind,source="$(pwd)",target=/usr/src \
+  mv_ops \
+  python scripts/delete_stack.py $STACK_NAME
