@@ -1,3 +1,4 @@
 .env
 __pycache__
 config/*parameters.yaml
+ops_helpers.txt

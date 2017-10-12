@@ -38,6 +38,12 @@ Parameters:
   SecretKeyBase:
     Description: Key base used to verify signed cookies
     Type: String
+  DogoodWorkerPoolMax:
+    Description: Maximum number of processes to run in parallel
+    Type: String
+  DogoodScrapingImport:
+    Description: Toggle website scraping on/off
+    Type: String
 
 Resources:
   VPC:
@@ -347,7 +353,7 @@ Resources:
       ContainerDefinitions:
         - Name: mrs-silence-dogood
           Essential: true
-          Memory: 950
+          Memory: 875
           Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/mrs-silence-dogood:latest
           LogConfiguration:
             LogDriver: awslogs
@@ -365,10 +371,14 @@ Resources:
               Value: !Ref DBUsername
             - Name: DB_PASSWORD
               Value: !Ref DBPassword
-            - Name: FEEDER_ENV
-              Value: !Ref ContainerEnvironment
             - Name: AWS_REGION
               Value: !Ref AwsRegion
+            - Name: FEEDER_ENV
+              Value: !Ref ContainerEnvironment
+            - Name: WORKER_POOL_MAX
+              Value: !Ref DogoodWorkerPoolMax
+            - Name: SCRAPING_IMPORT
+              Value: !Ref DogoodScrapingImport
   DogoodLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
