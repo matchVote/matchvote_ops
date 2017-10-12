@@ -347,7 +347,7 @@ Resources:
       ContainerDefinitions:
         - Name: mrs-silence-dogood
           Essential: true
-          Memory: 1000
+          Memory: 950
           Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/mrs-silence-dogood:latest
           LogConfiguration:
             LogDriver: awslogs
