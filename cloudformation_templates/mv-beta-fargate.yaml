@@ -1,0 +1,607 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Stack to support matchVote and Mrs. Silence Dogood.
+             ECS containers are launched using Fargate.
+
+Mappings:
+  SubnetConfig:
+    VPC:
+      CIDR: 10.0.0.0/16
+    PublicSubnetOne:
+      CIDR: 10.0.0.0/24
+    PublicSubnetTwo:
+      CIDR: 10.0.1.0/24
+    PrivateSubnet:
+      CIDR: 10.0.2.0/24
+    DBPrivateSubnetOne:
+      CIDR: 10.0.3.0/24
+    DBPrivateSubnetTwo:
+      CIDR: 10.0.4.0/24
+
+Parameters:
+  KeyName:
+    Description: Key for SSH access
+    Type: AWS::EC2::KeyPair::KeyName
+  IpRangeAllowedForSSH:
+    Description: The IP to allow for connecting by SSH
+    Type: String
+  DBName:
+    Description: Name of database
+    Type: String
+  DBPort:
+    Description: Port on which the database server is running
+    Type: String
+  DBUsername:
+    Description: Username for master user in database
+    Type: String
+  DBPassword:
+    Description: Password for master user in database
+    Type: String
+  MatchvoteWebServerPort:
+    Description: Port in which to bind container web server
+    Type: String
+  ContainerEnvironment:
+    Description: Environment setting in which container will run
+    Type: String
+  AwsRegion:
+    Description: Region in which instance resides
+    Type: String
+  ProfilePicBucket:
+    Description: Bucket in which profile pictures are uploaded
+    Type: String
+  SecretKeyBase:
+    Description: Key base used to verify signed cookies
+    Type: String
+  NLPServicePort:
+    Description: Port in which to bind NLP service container web server
+    Type: String
+  MatchvoteCPU:
+    Description: How much CPU to give the container. 1024 is 1 CPU
+    Type: Number
+    Default: 256
+  MatchvoteMemory:
+    Description: How much memory in megabytes to give the container
+    Type: Number
+    Default: 512
+  BastionHostAMI:
+    Description: AMI ID use for bastion host instance
+    Type: String
+
+Resources:
+  # Virtual Private Cloud containting all the things
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !FindInMap [SubnetConfig, VPC, CIDR]
+      EnableDnsHostnames: true
+
+  # Public subnets containing matchVote load balancer and NAT gateway.
+  # ALBs require a public subnet in at least two Availability Zones
+  PublicSubnetOne:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [0, !GetAZs '']  # Empty string defaults to region of stack
+      CidrBlock: !FindInMap [SubnetConfig, PublicSubnetOne, CIDR]
+      VpcId: !Ref VPC
+      MapPublicIpOnLaunch: true
+  PublicSubnetTwo:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [1, !GetAZs '']
+      CidrBlock: !FindInMap [SubnetConfig, PublicSubnetTwo, CIDR]
+      VpcId: !Ref VPC
+      MapPublicIpOnLaunch: true
+
+  # Private subnet containing the matchVote, Mrs. Silence Dogood, and NLP Service containers
+  PrivateSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock: !FindInMap [SubnetConfig, PrivateSubnet, CIDR]
+      VpcId: !Ref VPC
+      MapPublicIpOnLaunch: true
+
+  # Networking resources for the public subnets
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+  GatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+  RouteToInternet:
+    Type: AWS::EC2::Route
+    DependsOn: GatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      GatewayId: !Ref InternetGateway
+      DestinationCidrBlock: 0.0.0.0/0
+  PublicSubnetOneRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetOne
+      RouteTableId: !Ref PublicRouteTable
+  PublicSubnetTwoRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetTwo
+      RouteTableId: !Ref PublicRouteTable
+
+  # Networking resources for private subnet
+  # NAT Gateway resides in PublicSubnetOne
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatGatewayAttachment.AllocationId
+      SubnetId: !Ref PublicSubnetOne
+  NatGatewayAttachment:
+    Type: AWS::EC2::EIP
+    DependsOn: GatewayAttachment
+    Properties:
+      Domain: vpc
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+  RouteToNAT:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      NatGatewayId: !Ref NatGateway
+      DestinationCidrBlock: 0.0.0.0/0
+  PrivateSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet
+      RouteTableId: !Ref PrivateRouteTable
+
+  # Load balancer
+  PublicLoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Access to the public load balancer
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        # Allow access to ALB from anywhere on the internet
+        - CidrIp: 0.0.0.0/0
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+  PublicLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Subnets:
+        - !Ref PublicSubnetOne
+        - !Ref PublicSubnetTwo
+      SecurityGroups: [!Ref PublicLoadBalancerSecurityGroup]
+  PublicLoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    DependsOn:
+      - PublicLoadBalancer
+    Properties:
+      DefaultActions:
+        - TargetGroupArn: !Ref MatchvoteTargetGroup
+          Type: forward
+      LoadBalancerArn: !Ref PublicLoadBalancer
+      Port: 80
+      Protocol: HTTP
+  MatchvoteTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckPath: /citizens/sign_in
+      HealthCheckProtocol: HTTP
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      TargetType: ip
+      Name: matchvote-target-group
+      Port: !Ref MatchvoteWebServerPort
+      Protocol: HTTP
+      VpcId: !Ref VPC
+
+  # ECS resources
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Ref AWS::StackName
+
+  FargateContainerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    DependsOn: PublicLoadBalancerSecurityGroup
+    Properties:
+      GroupDescription: Access to the Fargate containers
+      VpcId: !Ref VPC
+  EcsSecurityGroupIngressFromPublicALB:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      Description: Ingress from the public load balancer
+      GroupId: !Ref FargateContainerSecurityGroup
+      SourceSecurityGroupId: !Ref PublicLoadBalancerSecurityGroup
+      IpProtocol: tcp
+      FromPort: 1
+      ToPort: 65535
+  EcsSecurityGroupIngressFromSelf:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      Description: Ingress from other containers in same security group
+      GroupId: !Ref FargateContainerSecurityGroup
+      SourceSecurityGroupId: !Ref FargateContainerSecurityGroup
+      IpProtocol: tcp
+      FromPort: 1
+      ToPort: 65535
+
+  # IAM role which authorizes ECS to manage resources on your account on your behalf
+  ECSRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      RoleName: !Sub ${AWS::StackName}-${AWS::Region}-ecs-role
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Action: "sts:AssumeRole"
+            Principal:
+              Service: ecs.amazonaws.com
+      Policies:
+        - PolicyName: ecs-service
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Resource: "*"
+                Action:
+                  # Rules which allow ECS to attach network interfaces to instances
+                  # on your behalf in order for awsvpc networking mode to work right
+                  - 'ec2:AttachNetworkInterface'
+                  - 'ec2:CreateNetworkInterface'
+                  - 'ec2:CreateNetworkInterfacePermission'
+                  - 'ec2:DeleteNetworkInterface'
+                  - 'ec2:DeleteNetworkInterfacePermission'
+                  - 'ec2:Describe*'
+                  - 'ec2:DetachNetworkInterface'
+
+                  # Rules which allow ECS to update load balancers on your behalf
+                  # with the information about how to send traffic to your containers
+                  - 'elasticloadbalancing:DeregisterInstancesFromLoadBalancer'
+                  - 'elasticloadbalancing:DeregisterTargets'
+                  - 'elasticloadbalancing:Describe*'
+                  - 'elasticloadbalancing:RegisterInstancesWithLoadBalancer'
+                  - 'elasticloadbalancing:RegisterTargets'
+  # IAM role which authorizes ECS to manage resources on your account on your behalf
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      RoleName: !Sub ${AWS::StackName}-${AWS::Region}-ecs-task-execution-role
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Action: "sts:AssumeRole"
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+      Policies:
+        - PolicyName: ecs-service
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Resource: "*"
+                Action:
+                  # All tasks to download images from ECR
+                  - "ecr:BatchCheckLayerAvailability"
+                  - "ecr:BatchGetImage"
+                  - "ecr:GetDownloadUrlForLayer"
+                  - "ecr:GetAuthorizationToken"
+
+                  # Allow tasks to upload logs to CloudWatch
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+  MatchvoteContainerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      RoleName: !Sub ${AWS::StackName}-${AWS::Region}-matchvote-container-role
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Action: "sts:AssumeRole"
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+      Policies:
+        - PolicyName: matchvote-s3-profile-pic-bucket-access
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Resource: !Sub arn:aws:s3:::${ProfilePicBucket}/*
+                Action:
+                  - "s3:*"
+
+  # Image repositories
+  MatchvoteRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: matchvote-fargate
+  # DogoodRepository:
+  #   Type: AWS::ECR::Repository
+  #   Properties:
+  #     RepositoryName: mrs-silence-dogood
+  # NLPRepository:
+  #   Type: AWS::ECR::Repository
+  #   Properties:
+  #     RepositoryName: nlp-service
+
+  # matchVote web app resources
+  MatchvoteTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub ${AWS::StackName}-matchvote
+      Cpu: !Ref MatchvoteCPU
+      Memory: !Ref MatchvoteMemory
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      TaskRoleArn: !GetAtt MatchvoteContainerRole.Arn
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      ContainerDefinitions:
+        - Name: matchvote
+          Essential: true
+          Cpu: !Ref MatchvoteCPU
+          Memory: !Ref MatchvoteMemory
+          Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/matchvote-fargate:latest
+          PortMappings:
+            - ContainerPort: !Ref MatchvoteWebServerPort
+              HostPort: !Ref MatchvoteWebServerPort
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Sub awslogs-${AWS::StackName}-matchvote
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: 'matchvote/matchvote'
+          Environment:
+            - Name: DB_HOST
+              Value: !GetAtt MatchvoteDatabase.Endpoint.Address
+            - Name: DB_NAME
+              Value: !Ref DBName
+            - Name: DB_PORT
+              Value: !Ref DBPort
+            - Name: DB_USER
+              Value: !Ref DBUsername
+            - Name: DB_PASSWORD
+              Value: !Ref DBPassword
+            - Name: WEB_SERVER_PORT
+              Value: !Ref MatchvoteWebServerPort
+            - Name: RAILS_ENV
+              Value: !Ref ContainerEnvironment
+            - Name: AWS_REGION
+              Value: !Ref AwsRegion
+            - Name: MV_PROFILE_PIC_BUCKET
+              Value: !Ref ProfilePicBucket
+            - Name: SECRET_KEY_BASE
+              Value: !Ref SecretKeyBase
+
+  MatchvoteService:
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: matchvote
+      Cluster: !Ref Cluster
+      LaunchType: FARGATE
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DesiredCount: 0
+      TaskDefinition: !Ref MatchvoteTaskDefinition
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups: [!Ref FargateContainerSecurityGroup]
+          Subnets: [!Ref PrivateSubnet]
+      LoadBalancers:
+        - ContainerName: matchvote
+          ContainerPort: !Ref MatchvoteWebServerPort
+          TargetGroupArn: !Ref MatchvoteTargetGroup
+
+  # Log groups
+  MatchvoteLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub awslogs-${AWS::StackName}-matchvote
+      RetentionInDays: 3
+
+  # Database resources
+  DBPrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock: !FindInMap [SubnetConfig, DBPrivateSubnetOne, CIDR]
+      VpcId: !Ref VPC
+  DBPrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [1, !GetAZs '']
+      CidrBlock: !FindInMap [SubnetConfig, DBPrivateSubnetTwo, CIDR]
+      VpcId: !Ref VPC
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Collection of subnets for RDS instance to use
+      SubnetIds:
+        - !Ref DBPrivateSubnet1
+        - !Ref DBPrivateSubnet2
+  DBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Firewall for MV RDS instance
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref FargateContainerSecurityGroup
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref BastionHostSecurityGroup
+  MatchvoteDatabase:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      AllocatedStorage: 5  # GB
+      DBInstanceClass: db.t2.micro
+      DBInstanceIdentifier: matchvote-db-fargate
+      DBName: !Ref DBName
+      Engine: postgres
+      MasterUsername: !Ref DBUsername
+      MasterUserPassword: !Ref DBPassword
+      VPCSecurityGroups:
+        - !GetAtt DBSecurityGroup.GroupId
+      DBSubnetGroupName: !Ref DBSubnetGroup
+
+  # Bastion host for access to database
+  BastionHostSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Firewall for Bastion host
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref IpRangeAllowedForSSH
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: 0.0.0.0/0
+  BastionHost:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref BastionHostAMI
+      SecurityGroupIds:
+        - !Ref BastionHostSecurityGroup
+      SubnetId: !Ref PublicSubnetOne
+      InstanceType: t2.nano
+      KeyName: !Ref KeyName
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-bastion-host
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          sudo yum update
+          sudo yum install postgresql
+
+
+  # DogoodService:
+  #   Type: AWS::ECS::Service
+  #   Properties:
+  #     Cluster: !Ref Cluster
+  #     DesiredCount: 0
+  #     ServiceName: mrs-silence-dogood
+  #     TaskDefinition: !Ref DogoodTaskDefinition
+  # DogoodTaskDefinition:
+  #   Type: AWS::ECS::TaskDefinition
+  #   Properties:
+  #     Family: !Sub ${AWS::StackName}-dogood
+  #     ContainerDefinitions:
+  #       - Name: mrs-silence-dogood
+  #         Essential: true
+  #         Memory: 490
+  #         Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/mrs-silence-dogood:latest
+  #         LogConfiguration:
+  #           LogDriver: awslogs
+  #           Options:
+  #             awslogs-group: !Sub awslogs-${AWS::StackName}-dogood
+  #             awslogs-region: !Ref AWS::Region
+  #         Environment:
+  #           - Name: DB_HOST
+  #             Value: !GetAtt MatchvoteDatabase.Endpoint.Address
+  #           - Name: DB_NAME
+  #             Value: !Ref DBName
+  #           - Name: DB_PORT
+  #             Value: !Ref DBPort
+  #           - Name: DB_USER
+  #             Value: !Ref DBUsername
+  #           - Name: DB_PASSWORD
+  #             Value: !Ref DBPassword
+  #           - Name: AWS_REGION
+  #             Value: !Ref AwsRegion
+  #           - Name: DOGOOD_ENV
+  #             Value: !Ref ContainerEnvironment
+  #           - Name: MAX_ARTICLES_PER_SOURCE
+  #             Value: !Ref DogoodMaxArticlesPerSource
+  # DogoodLogGroup:
+  #   Type: AWS::Logs::LogGroup
+  #   Properties:
+  #     LogGroupName: !Sub awslogs-${AWS::StackName}-dogood
+  #     RetentionInDays: 3
+  #
+  # NLPService:
+  #   Type: AWS::ECS::Service
+  #   Properties:
+  #     Cluster: !Ref Cluster
+  #     DesiredCount: 0
+  #     ServiceName: nlp-service
+  #     TaskDefinition: !Ref NLPTaskDefinition
+  # NLPTaskDefinition:
+  #   Type: AWS::ECS::TaskDefinition
+  #   Properties:
+  #     Family: !Sub ${AWS::StackName}-nlp
+  #     ContainerDefinitions:
+  #       - Name: nlp-service
+  #         Essential: true
+  #         Memory: 490
+  #         Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/nlp-service:latest
+  #         PortMappings:
+  #           - ContainerPort: !Ref NLPServicePort
+  #             HostPort: !Ref NLPServicePort
+  #         LogConfiguration:
+  #           LogDriver: awslogs
+  #           Options:
+  #             awslogs-group: !Sub awslogs-${AWS::StackName}-nlp
+  #             awslogs-region: !Ref AWS::Region
+  #         Environment:
+  #           - Name: DB_HOST
+  #             Value: !GetAtt MatchvoteDatabase.Endpoint.Address
+  #           - Name: DB_NAME
+  #             Value: !Ref DBName
+  #           - Name: DB_PORT
+  #             Value: !Ref DBPort
+  #           - Name: DB_USER
+  #             Value: !Ref DBUsername
+  #           - Name: DB_PASSWORD
+  #             Value: !Ref DBPassword
+  #           - Name: AWS_REGION
+  #             Value: !Ref AwsRegion
+  #           - Name: NLP_ENV
+  #             Value: !Ref ContainerEnvironment
+  #           - Name: SERVICE_PORT
+  #             Value: !Ref NLPServicePort
+  # NLPLogGroup:
+  #   Type: AWS::Logs::LogGroup
+  #   Properties:
+  #     LogGroupName: !Sub awslogs-${AWS::StackName}-nlp
+  #     RetentionInDays: 3
+
+
+  # DogoodSecurityGroup:
+  #   Type: AWS::EC2::SecurityGroup
+  #   Properties:
+  #     GroupDescription: Firewall for Mrs Silence Dogood
+  #     VpcId: !Ref VPC
+  #     SecurityGroupIngress:
+  #       - IpProtocol: tcp
+  #         FromPort: 22
+  #         ToPort: 22
+  #         CidrIp: !Ref IpRangeAllowedForSSH
+  #     SecurityGroupEgress:
+  #       - IpProtocol: tcp
+  #         FromPort: 0
+  #         ToPort: 65535
+  #         CidrIp: 0.0.0.0/0
+
+Outputs:
+  DBHost:
+    Value: !GetAtt MatchvoteDatabase.Endpoint.Address
+  BastionHost:
+    Value: !GetAtt BastionHost.PublicDnsName
