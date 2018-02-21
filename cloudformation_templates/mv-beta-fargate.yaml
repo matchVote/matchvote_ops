@@ -42,6 +42,9 @@ Parameters:
   ContainerEnvironment:
     Description: Environment setting in which container will run
     Type: String
+  MixEnv:
+    Description: Environment setting for Elixir mix apps
+    Type: String
   AwsRegion:
     Description: Region in which instance resides
     Type: String
@@ -62,6 +65,28 @@ Parameters:
     Description: How much memory in megabytes to give the container
     Type: Number
     Default: 512
+  NLPCPU:
+    Description: How much CPU to give the container. 1024 is 1 CPU
+    Type: Number
+    Default: 256
+  NLPMemory:
+    Description: How much memory in megabytes to give the container
+    Type: Number
+    Default: 512
+  DogoodCPU:
+    Description: How much CPU to give the container. 1024 is 1 CPU
+    Type: Number
+    Default: 256
+  DogoodMemory:
+    Description: How much memory in megabytes to give the container
+    Type: Number
+    Default: 512
+  DogoodKickoffCount:
+    Description: How many sources to process in parallel
+    Type: Number
+  DogoodLogLevel:
+    Description: Log level for Mrs. Silence Dogood
+    Type: String
   BastionHostAMI:
     Description: AMI ID use for bastion host instance
     Type: String
@@ -233,6 +258,15 @@ Resources:
       IpProtocol: tcp
       FromPort: 1
       ToPort: 65535
+  EcsSecurityGroupIngressFromBastionHost:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      Description: Ingress from bastion host
+      GroupId: !Ref FargateContainerSecurityGroup
+      SourceSecurityGroupId: !Ref BastionHostSecurityGroup
+      IpProtocol: tcp
+      FromPort: 1
+      ToPort: 65535
 
   # IAM role which authorizes ECS to manage resources on your account on your behalf
   ECSRole:
@@ -323,14 +357,14 @@ Resources:
     Type: AWS::ECR::Repository
     Properties:
       RepositoryName: matchvote-fargate
-  # DogoodRepository:
-  #   Type: AWS::ECR::Repository
-  #   Properties:
-  #     RepositoryName: mrs-silence-dogood
-  # NLPRepository:
-  #   Type: AWS::ECR::Repository
-  #   Properties:
-  #     RepositoryName: nlp-service
+  DogoodRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: mrs-silence-dogood-fargate
+  NLPRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: nlp-service-fargate
 
   # matchVote web app resources
   MatchvoteTaskDefinition:
@@ -380,7 +414,6 @@ Resources:
               Value: !Ref ProfilePicBucket
             - Name: SECRET_KEY_BASE
               Value: !Ref SecretKeyBase
-
   MatchvoteService:
     Type: AWS::ECS::Service
     Properties:
@@ -402,11 +435,145 @@ Resources:
           ContainerPort: !Ref MatchvoteWebServerPort
           TargetGroupArn: !Ref MatchvoteTargetGroup
 
+  # NLP service resources
+  NLPTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub ${AWS::StackName}-nlp
+      Cpu: !Ref NLPCPU
+      Memory: !Ref NLPMemory
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      ContainerDefinitions:
+        - Name: nlp-service
+          Essential: true
+          Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/nlp-service-fargate:latest
+          Cpu: !Ref NLPCPU
+          Memory: !Ref NLPMemory
+          PortMappings:
+            - ContainerPort: !Ref NLPServicePort
+              HostPort: !Ref NLPServicePort
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Sub awslogs-${AWS::StackName}-nlp
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: 'matchvote/nlp-service'
+          Environment:
+            - Name: DB_HOST
+              Value: !GetAtt MatchvoteDatabase.Endpoint.Address
+            - Name: DB_NAME
+              Value: !Ref DBName
+            - Name: DB_PORT
+              Value: !Ref DBPort
+            - Name: DB_USER
+              Value: !Ref DBUsername
+            - Name: DB_PASSWORD
+              Value: !Ref DBPassword
+            - Name: AWS_REGION
+              Value: !Ref AwsRegion
+            - Name: NLP_ENV
+              Value: !Ref ContainerEnvironment
+            - Name: SERVICE_PORT
+              Value: !Ref NLPServicePort
+  NLPService:
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: nlp-service
+      Cluster: !Ref Cluster
+      DesiredCount: 0
+      LaunchType: FARGATE
+      TaskDefinition: !Ref NLPTaskDefinition
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DesiredCount: 0
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups: [!Ref FargateContainerSecurityGroup]
+          Subnets: [!Ref PrivateSubnet]
+
+  # Mrs. Silence Dogood resources
+  DogoodService:
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: mrs-silence-dogood
+      Cluster: !Ref Cluster
+      DesiredCount: 0
+      LaunchType: FARGATE
+      TaskDefinition: !Ref DogoodTaskDefinition
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DesiredCount: 0
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups: [!Ref FargateContainerSecurityGroup]
+          Subnets: [!Ref PrivateSubnet]
+  DogoodTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub ${AWS::StackName}-dogood
+      Cpu: !Ref DogoodCPU
+      Memory: !Ref DogoodMemory
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      ContainerDefinitions:
+        - Name: mrs-silence-dogood
+          Essential: true
+          Cpu: !Ref DogoodCPU
+          Memory: !Ref DogoodMemory
+          Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/mrs-silence-dogood-fargate:latest
+          PortMappings:
+            - ContainerPort: !Ref NLPServicePort
+              HostPort: !Ref NLPServicePort
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Sub awslogs-${AWS::StackName}-dogood
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: 'matchvote/mrs-silence-dogood'
+          Environment:
+            - Name: DB_HOST
+              Value: !GetAtt MatchvoteDatabase.Endpoint.Address
+            - Name: DB_NAME
+              Value: !Ref DBName
+            - Name: DB_PORT
+              Value: !Ref DBPort
+            - Name: DB_USER
+              Value: !Ref DBUsername
+            - Name: DB_PASSWORD
+              Value: !Ref DBPassword
+            - Name: AWS_REGION
+              Value: !Ref AwsRegion
+            - Name: MIX_ENV
+              Value: !Ref MixEnv
+            - Name: KICKOFF_COUNT
+              Value: !Ref DogoodKickoffCount
+            - Name: LOG_LEVEL
+              Value: !Ref DogoodLogLevel
+
   # Log groups
   MatchvoteLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub awslogs-${AWS::StackName}-matchvote
+      RetentionInDays: 3
+  DogoodLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub awslogs-${AWS::StackName}-dogood
+      RetentionInDays: 3
+  NLPLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub awslogs-${AWS::StackName}-nlp
       RetentionInDays: 3
 
   # Database resources
@@ -492,96 +659,7 @@ Resources:
           sudo yum install postgresql
 
 
-  # DogoodService:
-  #   Type: AWS::ECS::Service
-  #   Properties:
-  #     Cluster: !Ref Cluster
-  #     DesiredCount: 0
-  #     ServiceName: mrs-silence-dogood
-  #     TaskDefinition: !Ref DogoodTaskDefinition
-  # DogoodTaskDefinition:
-  #   Type: AWS::ECS::TaskDefinition
-  #   Properties:
-  #     Family: !Sub ${AWS::StackName}-dogood
-  #     ContainerDefinitions:
-  #       - Name: mrs-silence-dogood
-  #         Essential: true
-  #         Memory: 490
-  #         Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/mrs-silence-dogood:latest
-  #         LogConfiguration:
-  #           LogDriver: awslogs
-  #           Options:
-  #             awslogs-group: !Sub awslogs-${AWS::StackName}-dogood
-  #             awslogs-region: !Ref AWS::Region
-  #         Environment:
-  #           - Name: DB_HOST
-  #             Value: !GetAtt MatchvoteDatabase.Endpoint.Address
-  #           - Name: DB_NAME
-  #             Value: !Ref DBName
-  #           - Name: DB_PORT
-  #             Value: !Ref DBPort
-  #           - Name: DB_USER
-  #             Value: !Ref DBUsername
-  #           - Name: DB_PASSWORD
-  #             Value: !Ref DBPassword
-  #           - Name: AWS_REGION
-  #             Value: !Ref AwsRegion
-  #           - Name: DOGOOD_ENV
-  #             Value: !Ref ContainerEnvironment
-  #           - Name: MAX_ARTICLES_PER_SOURCE
-  #             Value: !Ref DogoodMaxArticlesPerSource
-  # DogoodLogGroup:
-  #   Type: AWS::Logs::LogGroup
-  #   Properties:
-  #     LogGroupName: !Sub awslogs-${AWS::StackName}-dogood
-  #     RetentionInDays: 3
   #
-  # NLPService:
-  #   Type: AWS::ECS::Service
-  #   Properties:
-  #     Cluster: !Ref Cluster
-  #     DesiredCount: 0
-  #     ServiceName: nlp-service
-  #     TaskDefinition: !Ref NLPTaskDefinition
-  # NLPTaskDefinition:
-  #   Type: AWS::ECS::TaskDefinition
-  #   Properties:
-  #     Family: !Sub ${AWS::StackName}-nlp
-  #     ContainerDefinitions:
-  #       - Name: nlp-service
-  #         Essential: true
-  #         Memory: 490
-  #         Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/nlp-service:latest
-  #         PortMappings:
-  #           - ContainerPort: !Ref NLPServicePort
-  #             HostPort: !Ref NLPServicePort
-  #         LogConfiguration:
-  #           LogDriver: awslogs
-  #           Options:
-  #             awslogs-group: !Sub awslogs-${AWS::StackName}-nlp
-  #             awslogs-region: !Ref AWS::Region
-  #         Environment:
-  #           - Name: DB_HOST
-  #             Value: !GetAtt MatchvoteDatabase.Endpoint.Address
-  #           - Name: DB_NAME
-  #             Value: !Ref DBName
-  #           - Name: DB_PORT
-  #             Value: !Ref DBPort
-  #           - Name: DB_USER
-  #             Value: !Ref DBUsername
-  #           - Name: DB_PASSWORD
-  #             Value: !Ref DBPassword
-  #           - Name: AWS_REGION
-  #             Value: !Ref AwsRegion
-  #           - Name: NLP_ENV
-  #             Value: !Ref ContainerEnvironment
-  #           - Name: SERVICE_PORT
-  #             Value: !Ref NLPServicePort
-  # NLPLogGroup:
-  #   Type: AWS::Logs::LogGroup
-  #   Properties:
-  #     LogGroupName: !Sub awslogs-${AWS::StackName}-nlp
-  #     RetentionInDays: 3
 
 
   # DogoodSecurityGroup:
