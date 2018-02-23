@@ -558,6 +558,8 @@ Resources:
               Value: !Ref DogoodKickoffCount
             - Name: LOG_LEVEL
               Value: !Ref DogoodLogLevel
+            - Name: REPLACE_OS_VARS
+              Value: true
 
   # Log groups
   MatchvoteLogGroup:
