@@ -84,9 +84,6 @@ Parameters:
   DogoodKickoffCount:
     Description: How many sources to process in parallel
     Type: Number
-  DogoodLogLevel:
-    Description: Log level for Mrs. Silence Dogood
-    Type: String
   BastionHostAMI:
     Description: AMI ID use for bastion host instance
     Type: String
@@ -556,8 +553,6 @@ Resources:
               Value: !Ref MixEnv
             - Name: KICKOFF_COUNT
               Value: !Ref DogoodKickoffCount
-            - Name: LOG_LEVEL
-              Value: !Ref DogoodLogLevel
             - Name: REPLACE_OS_VARS
               Value: true
 
