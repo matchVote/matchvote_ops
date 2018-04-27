@@ -81,8 +81,16 @@ Parameters:
     Description: How much memory in megabytes to give the container
     Type: Number
     Default: 512
-  DogoodKickoffCount:
-    Description: How many sources to process in parallel
+  DogoodCPUTotal:
+    Description: How much CPU to give all task containers
+    Type: Number
+    Default: 512
+  DogoodMemoryTotal:
+    Description: How much memory in megabytes to give all task containers
+    Type: Number
+    Default: 1024
+  DogoodMaxConsumers:
+    Description: How many articles to process concurrently
     Type: Number
   BastionHostAMI:
     Description: AMI ID use for bastion host instance
@@ -432,18 +440,69 @@ Resources:
           ContainerPort: !Ref MatchvoteWebServerPort
           TargetGroupArn: !Ref MatchvoteTargetGroup
 
-  # NLP service resources
-  NLPTaskDefinition:
+  # Mrs. Silence Dogood resources
+  DogoodService:
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: mrs-silence-dogood
+      Cluster: !Ref Cluster
+      DesiredCount: 0
+      LaunchType: FARGATE
+      TaskDefinition: !Ref DogoodTaskDefinition
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DesiredCount: 0
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups: [!Ref FargateContainerSecurityGroup]
+          Subnets: [!Ref PrivateSubnet]
+  DogoodTaskDefinition:
     Type: AWS::ECS::TaskDefinition
     Properties:
-      Family: !Sub ${AWS::StackName}-nlp
-      Cpu: !Ref NLPCPU
-      Memory: !Ref NLPMemory
+      Family: !Sub ${AWS::StackName}-dogood
+      Cpu: !Ref DogoodCPUTotal
+      Memory: !Ref DogoodMemoryTotal
       NetworkMode: awsvpc
       RequiresCompatibilities:
         - FARGATE
       ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
       ContainerDefinitions:
+        - Name: mrs-silence-dogood
+          Essential: true
+          Cpu: !Ref DogoodCPU
+          Memory: !Ref DogoodMemory
+          Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/mrs-silence-dogood-fargate:latest
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Sub awslogs-${AWS::StackName}-dogood
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: 'matchvote/mrs-silence-dogood'
+          Environment:
+            - Name: DB_HOST
+              Value: !GetAtt MatchvoteDatabase.Endpoint.Address
+            - Name: DB_NAME
+              Value: !Ref DBName
+            - Name: DB_PORT
+              Value: !Ref DBPort
+            - Name: DB_USER
+              Value: !Ref DBUsername
+            - Name: DB_PASSWORD
+              Value: !Ref DBPassword
+            - Name: AWS_REGION
+              Value: !Ref AwsRegion
+            - Name: MIX_ENV
+              Value: !Ref MixEnv
+            - Name: MAX_CONSUMERS
+              Value: !Ref DogoodMaxConsumers
+            - Name: REPLACE_OS_VARS
+              Value: true
+            - Name: NLP_SERVICE_HOST
+              Value: localhost
+            - Name: NLP_SERVICE_PORT
+              Value: !Ref NLPServicePort
         - Name: nlp-service
           Essential: true
           Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/nlp-service-fargate:latest
@@ -475,86 +534,6 @@ Resources:
               Value: !Ref ContainerEnvironment
             - Name: SERVICE_PORT
               Value: !Ref NLPServicePort
-  NLPService:
-    Type: AWS::ECS::Service
-    Properties:
-      ServiceName: nlp-service
-      Cluster: !Ref Cluster
-      DesiredCount: 0
-      LaunchType: FARGATE
-      TaskDefinition: !Ref NLPTaskDefinition
-      DeploymentConfiguration:
-        MaximumPercent: 200
-        MinimumHealthyPercent: 100
-      DesiredCount: 0
-      NetworkConfiguration:
-        AwsvpcConfiguration:
-          AssignPublicIp: ENABLED
-          SecurityGroups: [!Ref FargateContainerSecurityGroup]
-          Subnets: [!Ref PrivateSubnet]
-
-  # Mrs. Silence Dogood resources
-  DogoodService:
-    Type: AWS::ECS::Service
-    Properties:
-      ServiceName: mrs-silence-dogood
-      Cluster: !Ref Cluster
-      DesiredCount: 0
-      LaunchType: FARGATE
-      TaskDefinition: !Ref DogoodTaskDefinition
-      DeploymentConfiguration:
-        MaximumPercent: 200
-        MinimumHealthyPercent: 100
-      DesiredCount: 0
-      NetworkConfiguration:
-        AwsvpcConfiguration:
-          AssignPublicIp: ENABLED
-          SecurityGroups: [!Ref FargateContainerSecurityGroup]
-          Subnets: [!Ref PrivateSubnet]
-  DogoodTaskDefinition:
-    Type: AWS::ECS::TaskDefinition
-    Properties:
-      Family: !Sub ${AWS::StackName}-dogood
-      Cpu: !Ref DogoodCPU
-      Memory: !Ref DogoodMemory
-      NetworkMode: awsvpc
-      RequiresCompatibilities:
-        - FARGATE
-      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
-      ContainerDefinitions:
-        - Name: mrs-silence-dogood
-          Essential: true
-          Cpu: !Ref DogoodCPU
-          Memory: !Ref DogoodMemory
-          Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/mrs-silence-dogood-fargate:latest
-          PortMappings:
-            - ContainerPort: !Ref NLPServicePort
-              HostPort: !Ref NLPServicePort
-          LogConfiguration:
-            LogDriver: awslogs
-            Options:
-              awslogs-group: !Sub awslogs-${AWS::StackName}-dogood
-              awslogs-region: !Ref AWS::Region
-              awslogs-stream-prefix: 'matchvote/mrs-silence-dogood'
-          Environment:
-            - Name: DB_HOST
-              Value: !GetAtt MatchvoteDatabase.Endpoint.Address
-            - Name: DB_NAME
-              Value: !Ref DBName
-            - Name: DB_PORT
-              Value: !Ref DBPort
-            - Name: DB_USER
-              Value: !Ref DBUsername
-            - Name: DB_PASSWORD
-              Value: !Ref DBPassword
-            - Name: AWS_REGION
-              Value: !Ref AwsRegion
-            - Name: MIX_ENV
-              Value: !Ref MixEnv
-            - Name: KICKOFF_COUNT
-              Value: !Ref DogoodKickoffCount
-            - Name: REPLACE_OS_VARS
-              Value: true
 
   # Log groups
   MatchvoteLogGroup:
