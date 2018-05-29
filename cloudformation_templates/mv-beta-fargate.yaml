@@ -95,6 +95,12 @@ Parameters:
   BastionHostAMI:
     Description: AMI ID use for bastion host instance
     Type: String
+  TwitterKey:
+    Description: Twitter API key for OAuth login
+    Type: String
+  TwitterSecret:
+    Description: Twitter API secret key for OAuth login
+    Type: String
 
 Resources:
   # Virtual Private Cloud containting all the things
@@ -419,6 +425,10 @@ Resources:
               Value: !Ref ProfilePicBucket
             - Name: SECRET_KEY_BASE
               Value: !Ref SecretKeyBase
+            - Name: TWITTER_KEY
+              Value: !Ref TwitterKey
+            - Name: TWITTER_SECRET
+              Value: !Ref TwitterSecret
   MatchvoteService:
     Type: AWS::ECS::Service
     Properties:
