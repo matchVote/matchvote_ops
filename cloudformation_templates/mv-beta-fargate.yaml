@@ -101,6 +101,12 @@ Parameters:
   TwitterSecret:
     Description: Twitter API secret key for OAuth login
     Type: String
+  MailgunAPIKey:
+    Description: MailGun API key for sending emails
+    Type: String
+  MailgunDomain:
+    Description: MailGun domain for sending emails
+    Type: String
 
 Resources:
   # Virtual Private Cloud containting all the things
@@ -429,6 +435,10 @@ Resources:
               Value: !Ref TwitterKey
             - Name: TWITTER_SECRET
               Value: !Ref TwitterSecret
+            - Name: MAILGUN_API_KEY
+              Value: !Ref MailgunAPIKey
+            - Name: MAILGUN_DOMAIN
+              Value: !Ref MailgunDomain
   MatchvoteService:
     Type: AWS::ECS::Service
     Properties:
