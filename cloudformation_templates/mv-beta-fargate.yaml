@@ -107,6 +107,12 @@ Parameters:
   MailgunDomain:
     Description: MailGun domain for sending emails
     Type: String
+  TwitterLogin:
+    Description: MailGun domain for sending emails
+    Type: String
+  FacebookLogin:
+    Description: MailGun domain for sending emails
+    Type: String
 
 Resources:
   # Virtual Private Cloud containting all the things
@@ -439,6 +445,10 @@ Resources:
               Value: !Ref MailgunAPIKey
             - Name: MAILGUN_DOMAIN
               Value: !Ref MailgunDomain
+            - Name: TWITTER_LOGIN
+              Value: !Ref TwitterLogin
+            - Name: FACEBOOK_LOGIN
+              Value: !Ref FacebookLogin
   MatchvoteService:
     Type: AWS::ECS::Service
     Properties:
