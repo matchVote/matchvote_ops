@@ -101,6 +101,12 @@ Parameters:
   TwitterSecret:
     Description: Twitter API secret key for OAuth login
     Type: String
+  FacebookKey:
+    Description: Facebook API key for OAuth login
+    Type: String
+  FacebookSecret:
+    Description: Facebook API secret key for OAuth login
+    Type: String
   MailgunAPIKey:
     Description: MailGun API key for sending emails
     Type: String
@@ -108,10 +114,10 @@ Parameters:
     Description: MailGun domain for sending emails
     Type: String
   TwitterLogin:
-    Description: MailGun domain for sending emails
+    Description: Whether or not to display Twitter login button
     Type: String
   FacebookLogin:
-    Description: MailGun domain for sending emails
+    Description: Whether or not to display Facebook login button
     Type: String
 
 Resources:
@@ -441,6 +447,10 @@ Resources:
               Value: !Ref TwitterKey
             - Name: TWITTER_SECRET
               Value: !Ref TwitterSecret
+            - Name: FACEBOOK_KEY
+              Value: !Ref FacebookKey
+            - Name: FACEBOOK_SECRET
+              Value: !Ref FacebookSecret
             - Name: MAILGUN_API_KEY
               Value: !Ref MailgunAPIKey
             - Name: MAILGUN_DOMAIN
