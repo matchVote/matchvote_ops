@@ -116,9 +116,14 @@ Parameters:
   TwitterLogin:
     Description: Whether or not to display Twitter login button
     Type: String
+    Default: active
   FacebookLogin:
     Description: Whether or not to display Facebook login button
     Type: String
+    Default: active
+  MVTasksCommand:
+    Description: Command to run; usually rake ...
+    Type: List<String>
 
 Resources:
   # Virtual Private Cloud containting all the things
@@ -468,7 +473,7 @@ Resources:
       DeploymentConfiguration:
         MaximumPercent: 200
         MinimumHealthyPercent: 100
-      DesiredCount: 0
+      DesiredCount: 1
       TaskDefinition: !Ref MatchvoteTaskDefinition
       NetworkConfiguration:
         AwsvpcConfiguration:
@@ -486,7 +491,6 @@ Resources:
     Properties:
       ServiceName: mrs-silence-dogood
       Cluster: !Ref Cluster
-      DesiredCount: 0
       LaunchType: FARGATE
       TaskDefinition: !Ref DogoodTaskDefinition
       DeploymentConfiguration:
@@ -575,6 +579,48 @@ Resources:
             - Name: SERVICE_PORT
               Value: !Ref NLPServicePort
 
+  MVTasksTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub ${AWS::StackName}-mv-tasks
+      Cpu: !Ref MatchvoteCPU
+      Memory: !Ref MatchvoteMemory
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      TaskRoleArn: !GetAtt MatchvoteContainerRole.Arn
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      ContainerDefinitions:
+        - Name: mv-tasks
+          Essential: true
+          Command: !Ref MVTasksCommand
+          Cpu: !Ref MatchvoteCPU
+          Memory: !Ref MatchvoteMemory
+          Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/matchvote-fargate:latest
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Sub awslogs-${AWS::StackName}-mv-tasks
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: 'matchvote/tasks'
+          Environment:
+            - Name: DB_HOST
+              Value: !GetAtt MatchvoteDatabase.Endpoint.Address
+            - Name: DB_NAME
+              Value: !Ref DBName
+            - Name: DB_PORT
+              Value: !Ref DBPort
+            - Name: DB_USER
+              Value: !Ref DBUsername
+            - Name: DB_PASSWORD
+              Value: !Ref DBPassword
+            - Name: RAILS_ENV
+              Value: !Ref ContainerEnvironment
+            - Name: MV_PROFILE_PIC_BUCKET
+              Value: !Ref ProfilePicBucket
+            - Name: SECRET_KEY_BASE
+              Value: !Ref SecretKeyBase
+
   # Log groups
   MatchvoteLogGroup:
     Type: AWS::Logs::LogGroup
@@ -590,6 +636,11 @@ Resources:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub awslogs-${AWS::StackName}-nlp
+      RetentionInDays: 3
+  MVTasksLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub awslogs-${AWS::StackName}-mv-tasks
       RetentionInDays: 3
 
   # Database resources
@@ -673,26 +724,6 @@ Resources:
           #!/bin/bash
           sudo yum update
           sudo yum install postgresql
-
-
-  #
-
-
-  # DogoodSecurityGroup:
-  #   Type: AWS::EC2::SecurityGroup
-  #   Properties:
-  #     GroupDescription: Firewall for Mrs Silence Dogood
-  #     VpcId: !Ref VPC
-  #     SecurityGroupIngress:
-  #       - IpProtocol: tcp
-  #         FromPort: 22
-  #         ToPort: 22
-  #         CidrIp: !Ref IpRangeAllowedForSSH
-  #     SecurityGroupEgress:
-  #       - IpProtocol: tcp
-  #         FromPort: 0
-  #         ToPort: 65535
-  #         CidrIp: 0.0.0.0/0
 
 Outputs:
   DBHost:
