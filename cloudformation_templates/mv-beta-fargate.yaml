@@ -124,6 +124,15 @@ Parameters:
   MVTasksCommand:
     Description: Command to run; usually rake ...
     Type: List<String>
+  MailChimpAPIKey:
+    Description: API key for Mail Chimp
+    Type: String
+  MailChimpUsername:
+    Description: Mail Chimp account username
+    Type: String
+  MailChimpListID:
+    Description: Mail Chimp subscription list ID
+    Type: String
 
 Resources:
   # Virtual Private Cloud containting all the things
@@ -464,6 +473,12 @@ Resources:
               Value: !Ref TwitterLogin
             - Name: FACEBOOK_LOGIN
               Value: !Ref FacebookLogin
+            - Name: MAILCHIMP_API_KEY
+              Value: !Ref MailChimpAPIKey
+            - Name: MAILCHIMP_USERNAME
+              Value: !Ref MailChimpUsername
+            - Name: MAILCHIMP_LIST_ID
+              Value: !Ref MailChimpListID
   MatchvoteService:
     Type: AWS::ECS::Service
     Properties:
