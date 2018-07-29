@@ -473,12 +473,6 @@ Resources:
               Value: !Ref TwitterLogin
             - Name: FACEBOOK_LOGIN
               Value: !Ref FacebookLogin
-            - Name: MAILCHIMP_API_KEY
-              Value: !Ref MailChimpAPIKey
-            - Name: MAILCHIMP_USERNAME
-              Value: !Ref MailChimpUsername
-            - Name: MAILCHIMP_LIST_ID
-              Value: !Ref MailChimpListID
   MatchvoteService:
     Type: AWS::ECS::Service
     Properties:
@@ -635,6 +629,12 @@ Resources:
               Value: !Ref ProfilePicBucket
             - Name: SECRET_KEY_BASE
               Value: !Ref SecretKeyBase
+            - Name: MAILCHIMP_API_KEY
+              Value: !Ref MailChimpAPIKey
+            - Name: MAILCHIMP_USERNAME
+              Value: !Ref MailChimpUsername
+            - Name: MAILCHIMP_LIST_ID
+              Value: !Ref MailChimpListID
 
   # Log groups
   MatchvoteLogGroup:
