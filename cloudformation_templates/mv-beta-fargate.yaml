@@ -508,13 +508,13 @@ Resources:
       DesiredCount: 0
       NetworkConfiguration:
         AwsvpcConfiguration:
-          AssignPublicIp: ENABLED
+          AssignPublicIp: DISABLED
           SecurityGroups: [!Ref FargateContainerSecurityGroup]
           Subnets: [!Ref PrivateSubnet]
   DogoodTaskDefinition:
     Type: AWS::ECS::TaskDefinition
     Properties:
-      Family: !Sub ${AWS::StackName}-dogood
+      Family: !Sub ${AWS::StackName}-dogood-update
       Cpu: !Ref DogoodCPUTotal
       Memory: !Ref DogoodMemoryTotal
       NetworkMode: awsvpc
