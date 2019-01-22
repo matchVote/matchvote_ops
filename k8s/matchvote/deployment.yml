@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: matchvote
+spec:
+  selector:
+    matchLabels:
+      app: matchvote
+      env: prod
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        app: matchvote
+        env: prod
+    spec:
+      containers:
+        - name: matchvote
+          image: 788332838494.dkr.ecr.us-east-1.amazonaws.com/matchvote:1.0.0-beta.7
+          envFrom:
+            - configMapRef:
+                name: matchvote-config
+          ports:
+            - containerPort: 80
+              name: http-server
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http-server
+            periodSeconds: 30
+            initialDelaySeconds: 60
+            timeoutSeconds: 30
+            failureThreshold: 3
+            successThreshold: 2

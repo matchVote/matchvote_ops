@@ -1,0 +1,22 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Generic infrastructure to support all matchVote services using k8s.
+             This will deprecate "mv-beta-fargate.yaml".
+
+Resources:
+  # Image repositories
+  Almanack:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: almanack
+  # MatchvoteRepository:
+  #   Type: AWS::ECR::Repository
+  #   Properties:
+  #     RepositoryName: matchvote-fargate
+  # DogoodRepository:
+  #   Type: AWS::ECR::Repository
+  #   Properties:
+  #     RepositoryName: mrs-silence-dogood-fargate
+  # NLPRepository:
+  #   Type: AWS::ECR::Repository
+  #   Properties:
+  #     RepositoryName: nlp-service-fargate
