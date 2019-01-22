@@ -65,33 +65,6 @@ Parameters:
     Description: How much memory in megabytes to give the container
     Type: Number
     Default: 512
-  NLPCPU:
-    Description: How much CPU to give the container. 1024 is 1 CPU
-    Type: Number
-    Default: 256
-  NLPMemory:
-    Description: How much memory in megabytes to give the container
-    Type: Number
-    Default: 512
-  DogoodCPU:
-    Description: How much CPU to give the container. 1024 is 1 CPU
-    Type: Number
-    Default: 256
-  DogoodMemory:
-    Description: How much memory in megabytes to give the container
-    Type: Number
-    Default: 512
-  DogoodCPUTotal:
-    Description: How much CPU to give all task containers
-    Type: Number
-    Default: 512
-  DogoodMemoryTotal:
-    Description: How much memory in megabytes to give all task containers
-    Type: Number
-    Default: 1024
-  DogoodMaxConsumers:
-    Description: How many articles to process concurrently
-    Type: Number
   BastionHostAMI:
     Description: AMI ID use for bastion host instance
     Type: String
@@ -121,9 +94,6 @@ Parameters:
     Description: Whether or not to display Facebook login button
     Type: String
     Default: active
-  MVTasksCommand:
-    Description: Command to run; usually rake ...
-    Type: List<String>
   MailChimpAPIKey:
     Description: API key for Mail Chimp
     Type: String
@@ -494,168 +464,11 @@ Resources:
           ContainerPort: !Ref MatchvoteWebServerPort
           TargetGroupArn: !Ref MatchvoteTargetGroup
 
-  # Mrs. Silence Dogood resources
-  DogoodService:
-    Type: AWS::ECS::Service
-    Properties:
-      ServiceName: mrs-silence-dogood
-      Cluster: !Ref Cluster
-      LaunchType: FARGATE
-      TaskDefinition: !Ref DogoodTaskDefinition
-      DeploymentConfiguration:
-        MaximumPercent: 200
-        MinimumHealthyPercent: 100
-      DesiredCount: 0
-      NetworkConfiguration:
-        AwsvpcConfiguration:
-          AssignPublicIp: DISABLED
-          SecurityGroups: [!Ref FargateContainerSecurityGroup]
-          Subnets: [!Ref PrivateSubnet]
-  DogoodTaskDefinition:
-    Type: AWS::ECS::TaskDefinition
-    Properties:
-      Family: !Sub ${AWS::StackName}-dogood-update
-      Cpu: !Ref DogoodCPUTotal
-      Memory: !Ref DogoodMemoryTotal
-      NetworkMode: awsvpc
-      RequiresCompatibilities:
-        - FARGATE
-      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
-      ContainerDefinitions:
-        - Name: mrs-silence-dogood
-          Essential: true
-          Cpu: !Ref DogoodCPU
-          Memory: !Ref DogoodMemory
-          Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/mrs-silence-dogood-fargate:latest
-          LogConfiguration:
-            LogDriver: awslogs
-            Options:
-              awslogs-group: !Sub awslogs-${AWS::StackName}-dogood
-              awslogs-region: !Ref AWS::Region
-              awslogs-stream-prefix: 'matchvote/mrs-silence-dogood'
-          Environment:
-            - Name: DB_HOST
-              Value: !GetAtt MatchvoteDatabase.Endpoint.Address
-            - Name: DB_NAME
-              Value: !Ref DBName
-            - Name: DB_PORT
-              Value: !Ref DBPort
-            - Name: DB_USER
-              Value: !Ref DBUsername
-            - Name: DB_PASSWORD
-              Value: !Ref DBPassword
-            - Name: AWS_REGION
-              Value: !Ref AwsRegion
-            - Name: MIX_ENV
-              Value: !Ref MixEnv
-            - Name: MAX_CONSUMERS
-              Value: !Ref DogoodMaxConsumers
-            - Name: REPLACE_OS_VARS
-              Value: true
-            - Name: NLP_SERVICE_HOST
-              Value: localhost
-            - Name: NLP_SERVICE_PORT
-              Value: !Ref NLPServicePort
-        - Name: nlp-service
-          Essential: true
-          Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/nlp-service-fargate:latest
-          Cpu: !Ref NLPCPU
-          Memory: !Ref NLPMemory
-          PortMappings:
-            - ContainerPort: !Ref NLPServicePort
-              HostPort: !Ref NLPServicePort
-          LogConfiguration:
-            LogDriver: awslogs
-            Options:
-              awslogs-group: !Sub awslogs-${AWS::StackName}-nlp
-              awslogs-region: !Ref AWS::Region
-              awslogs-stream-prefix: 'matchvote/nlp-service'
-          Environment:
-            - Name: DB_HOST
-              Value: !GetAtt MatchvoteDatabase.Endpoint.Address
-            - Name: DB_NAME
-              Value: !Ref DBName
-            - Name: DB_PORT
-              Value: !Ref DBPort
-            - Name: DB_USER
-              Value: !Ref DBUsername
-            - Name: DB_PASSWORD
-              Value: !Ref DBPassword
-            - Name: AWS_REGION
-              Value: !Ref AwsRegion
-            - Name: NLP_ENV
-              Value: !Ref ContainerEnvironment
-            - Name: SERVICE_PORT
-              Value: !Ref NLPServicePort
-
-  MVTasksTaskDefinition:
-    Type: AWS::ECS::TaskDefinition
-    Properties:
-      Family: !Sub ${AWS::StackName}-mv-tasks
-      Cpu: !Ref MatchvoteCPU
-      Memory: !Ref MatchvoteMemory
-      NetworkMode: awsvpc
-      RequiresCompatibilities:
-        - FARGATE
-      TaskRoleArn: !GetAtt MatchvoteContainerRole.Arn
-      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
-      ContainerDefinitions:
-        - Name: mv-tasks
-          Essential: true
-          Command: !Ref MVTasksCommand
-          Cpu: !Ref MatchvoteCPU
-          Memory: !Ref MatchvoteMemory
-          Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/matchvote-fargate:latest
-          LogConfiguration:
-            LogDriver: awslogs
-            Options:
-              awslogs-group: !Sub awslogs-${AWS::StackName}-mv-tasks
-              awslogs-region: !Ref AWS::Region
-              awslogs-stream-prefix: 'matchvote/tasks'
-          Environment:
-            - Name: DB_HOST
-              Value: !GetAtt MatchvoteDatabase.Endpoint.Address
-            - Name: DB_NAME
-              Value: !Ref DBName
-            - Name: DB_PORT
-              Value: !Ref DBPort
-            - Name: DB_USER
-              Value: !Ref DBUsername
-            - Name: DB_PASSWORD
-              Value: !Ref DBPassword
-            - Name: RAILS_ENV
-              Value: !Ref ContainerEnvironment
-            - Name: MV_PROFILE_PIC_BUCKET
-              Value: !Ref ProfilePicBucket
-            - Name: SECRET_KEY_BASE
-              Value: !Ref SecretKeyBase
-            - Name: MAILCHIMP_API_KEY
-              Value: !Ref MailChimpAPIKey
-            - Name: MAILCHIMP_USERNAME
-              Value: !Ref MailChimpUsername
-            - Name: MAILCHIMP_LIST_ID
-              Value: !Ref MailChimpListID
-
   # Log groups
   MatchvoteLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub awslogs-${AWS::StackName}-matchvote
-      RetentionInDays: 3
-  DogoodLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub awslogs-${AWS::StackName}-dogood
-      RetentionInDays: 3
-  NLPLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub awslogs-${AWS::StackName}-nlp
-      RetentionInDays: 3
-  MVTasksLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub awslogs-${AWS::StackName}-mv-tasks
       RetentionInDays: 3
 
   # Database resources
