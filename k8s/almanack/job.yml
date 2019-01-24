@@ -1,0 +1,19 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: almanack
+spec:
+  template:
+    metadata:
+      labels:
+        app: almanack
+        env: prod
+    spec:
+      containers:
+        - name: almanack
+          image: 788332838494.dkr.ecr.us-east-1.amazonaws.com/almanack:v0.1.1
+          imagePullPolicy: Always
+          envFrom:
+            - secretRef:
+                name: almanack-secrets
+        restartPolicy: OnFailure

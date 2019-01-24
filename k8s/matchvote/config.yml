@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: matchvote-config
+data:
+  RAILS_ENV: production
+  FACEBOOK_LOGIN: active
+  TWITTER_LOGIN: active

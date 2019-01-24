@@ -2,3 +2,4 @@
 __pycache__
 config/*parameters.yaml
 ops_helpers.txt
+k8s/**/secrets.yml

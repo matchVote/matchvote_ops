@@ -20,6 +20,8 @@ spec:
           envFrom:
             - configMapRef:
                 name: nlp-config
+            - secretRef:
+                name: nlp-secrets
           ports:
             - containerPort: 9000
               name: http-server

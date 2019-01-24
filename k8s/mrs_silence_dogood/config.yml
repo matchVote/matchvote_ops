@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dogood-config
+data:
+  MAX_CONSUMERS: "20"
+  REPLACE_OS_VARS: "true"
+  NLP_SERVICE_HOST: nlp
