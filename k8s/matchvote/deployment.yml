@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: matchvote
-          image: 788332838494.dkr.ecr.us-east-1.amazonaws.com/matchvote:1.0.0-beta.7
+          image: 788332838494.dkr.ecr.us-east-1.amazonaws.com/matchvote:1.0.0-beta.8
           imagePullPolicy: Always
           envFrom:
             - configMapRef:
