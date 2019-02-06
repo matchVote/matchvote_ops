@@ -8,6 +8,10 @@ Resources:
     Type: AWS::ECR::Repository
     Properties:
       RepositoryName: almanack
+  Migrant:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: migrant
   # MatchvoteRepository:
   #   Type: AWS::ECR::Repository
   #   Properties:

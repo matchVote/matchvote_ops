@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: migrant
+spec:
+  selector:
+    matchLabels:
+      app: migrant
+      env: prod
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: migrant
+        env: prod
+    spec:
+      containers:
+        - name: migrant
+          image: 788332838494.dkr.ecr.us-east-1.amazonaws.com/migrant:0.1.0
+          envFrom:
+            - secretRef:
+                name: migrant-matchvote-db
+
