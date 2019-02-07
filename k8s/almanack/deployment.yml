@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: almanack
+spec:
+  selector:
+    matchLabels:
+      app: almanack
+      env: prod
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: almanack
+        env: prod
+    spec:
+      containers:
+        - name: almanack
+          image: 788332838494.dkr.ecr.us-east-1.amazonaws.com/almanack:0.2.2
+          imagePullPolicy: Always
+          envFrom:
+            - secretRef:
+                name: almanack-secrets
