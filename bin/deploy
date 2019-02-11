@@ -9,8 +9,9 @@ fi
 
 # Deploy migrant so it's up to date
 bin/store_image migrant
-kubectl apply -f k8s/migrant
+kubectl delete job/migrant --context='mv-beta'
+kubectl apply -f k8s/migrant --context='mv-beta'
 
 # Deploy app
 bin/store_image $APP
-kubectl apply -f k8s/$APP
+kubectl apply -f k8s/$APP --context='mv-beta'
