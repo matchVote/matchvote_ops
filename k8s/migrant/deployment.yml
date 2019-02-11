@@ -1,22 +1,20 @@
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: batch/v1
+kind: Job
 metadata:
   name: migrant
 spec:
-  selector:
-    matchLabels:
-      app: migrant
-      env: prod
-  replicas: 1
+  backoffLimit: 3
   template:
     metadata:
       labels:
         app: migrant
         env: prod
     spec:
+      restartPolicy: OnFailure
       containers:
         - name: migrant
-          image: 788332838494.dkr.ecr.us-east-1.amazonaws.com/migrant:0.1.0
+          image: 788332838494.dkr.ecr.us-east-1.amazonaws.com/migrant:0.1.1
+          imagePullPolicy: Always
           envFrom:
             - secretRef:
                 name: migrant-matchvote-db

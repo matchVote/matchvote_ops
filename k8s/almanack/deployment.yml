@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: almanack
-          image: 788332838494.dkr.ecr.us-east-1.amazonaws.com/almanack:0.2.2
+          image: 788332838494.dkr.ecr.us-east-1.amazonaws.com/almanack:0.3.0
           imagePullPolicy: Always
           envFrom:
             - secretRef:

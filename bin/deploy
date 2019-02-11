@@ -1,0 +1,16 @@
+#!/bin/bash
+
+APP=$1
+
+if [ -z "$APP" ]; then
+  echo "App name missing"
+  exit 1
+fi
+
+# Deploy migrant so it's up to date
+bin/store_image migrant
+kubectl apply -f k8s/migrant
+
+# Deploy app
+bin/store_image $APP
+kubectl apply -f k8s/$APP
