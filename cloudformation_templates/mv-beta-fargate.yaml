@@ -543,7 +543,7 @@ Resources:
         - !Ref BastionHostSecurityGroup
       SubnetId: !Ref PublicSubnetOne
       InstanceType: t2.nano
-      KeyName: !Ref KeyName
+      KeyName: mv-bastion-host
       Tags:
         - Key: Name
           Value: !Sub ${AWS::StackName}-bastion-host
