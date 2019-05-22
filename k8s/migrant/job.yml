@@ -13,7 +13,7 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: migrant
-          image: 788332838494.dkr.ecr.us-east-1.amazonaws.com/migrant:0.1.7
+          image: 788332838494.dkr.ecr.us-east-1.amazonaws.com/migrant:0.1.9
           imagePullPolicy: Always
           envFrom:
             - secretRef:
