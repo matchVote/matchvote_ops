@@ -18,4 +18,3 @@ spec:
           envFrom:
             - secretRef:
                 name: migrant-matchvote-db
-
