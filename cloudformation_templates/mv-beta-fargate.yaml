@@ -377,7 +377,7 @@ Resources:
   NLPRepository:
     Type: AWS::ECR::Repository
     Properties:
-      RepositoryName: nlp-service-fargate
+      RepositoryName: nlp_service
 
   # matchVote web app resources
   MatchvoteTaskDefinition:
